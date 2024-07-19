@@ -16,12 +16,36 @@
 ![image](https://github.com/user-attachments/assets/333bbf26-8681-4b06-be5f-49b22fd0d336)
 
 ### 相关组件
+![image](https://github.com/user-attachments/assets/e37253b5-3e5c-4d0b-994d-7b8c5d016e65)
+
 #### 控制面板组件（master）
-##### api-server接口服务，基于REST风格开放k8s接口服务
-##### controller-manager控制器管理器，管理各个类型的控制器进程，针对k8s中的各种资源进行管理
+##### api-server-接口服务：基于REST风格开放k8s接口服务
+##### kube-controller-manager-控制器管理器：管理各个类型的控制器进程，针对k8s中的各种资源进行管理
 ###### 节点控制器：负责在节点出现故障时进行通知和响应
 ###### 任务控制器：检测代表一次性任务的Job对象，然后创建Pods来运行这些任务直至完成
 ###### 端电分片控制器：填充端电分片对象
 ###### 服务账号控制器：为新的命名空间创建默认的服务账号
+##### cloud-coontroller-manager-云控制器管理器：第三方云平台提供的控制器API对接管理功能
+##### kube-scheduler-调度器：将pod基于一定算法，将其调度到更合适的节点上
+##### etcd-k8s的键值对分布式数据库，提供了基于Raft算法实现自主的集群高可用
 #### 节点组件(node)
+##### kubelet-管理pod生命周期，会在集群中每个节点（node）上运行。 它保证容器（containers）都运行在 Pod 中。kubelet 接收一组通过各类机制提供给它的 PodSpec，确保这些 PodSpec 中描述的容器处于运行状态且健康。 kubelet 不会管理不是由 Kubernetes 创建的容器
+##### kube-proxy 是集群中每个节点（node）上所运行的网络代理， 实现 Kubernetes 服务（Service） 概念的一部分。kube-proxy 维护节点上的一些网络规则， 这些网络规则会允许从集群内部或外部的网络会话与 Pod 进行网络通信。如果操作系统提供了可用的数据包过滤层，则 kube-proxy 会通过它来实现网络规则。 否则，kube-proxy 仅做流量转发。
+##### container runtime-容器运行时环境，例如docker、CRI-O
 #### 附加组件
+##### kube-dns 负责为整个集群提供 DNS 服务
+##### Ingress Controller 为服务提供外网入口
+##### Prometheus 提供资源监控
+##### Dashboard 提供 GUI控制台
+##### Federation 提供跨可用区的集群
+##### Fluentd-elasticsearch 提供集群日志采集、存储与查询
+
+### 分层架构
+![image](https://github.com/user-attachments/assets/719e6880-97d6-4255-bb75-75138b5f9889)
+
+
+#### 生态系统：在接口层之上的庞大容器集群管理调度的生态系统，可以划分为两个范畴：Kubernetes 外部：日志、监控、配置管理、CI、CD、Workflow、FaaS、OTS 应用、ChatOps 等。Kubernetes 内部：CRI、CNI、CVI、镜像仓库、Cloud Provider、集群自身的配置和管理等
+#### 接口层：kubectl 命令行工具、客户端 SDK 以及集群联邦
+#### 管理层：系统度量（如基础设施、容器和网络的度量），自动化（如自动扩展、动态 Provision 等）以及策略管理（RBAC、Quota、PSP、NetworkPolicy 等）
+#### 应用层：部署（无状态应用、有状态应用、批处理任务、集群应用等）和路由（服务发现、DNS 解析等）
+#### 核心层：Kubernetes 最核心的功能，对外提供 API 构建高层的应用，对内提供插件式应用执行环境
