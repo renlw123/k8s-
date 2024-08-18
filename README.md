@@ -192,20 +192,36 @@ label 与 selector 配合，可以实现对象的“关联”，“Pod 控制器
 
 
 
-三、存储  
+三、存储
+1 Volume:数据卷，共享 Pod 中容器使用的数据。用来放持久化的数据，比如数据库数据。  
+
+2 Csi:Container Storage Interface 是由来自 Kubernetes、Mesos、Docker 等社区成员联合制定的一个行业标准接口规范，旨在将任意存储系统暴露给容器化应用程序。CSI 规范定义了存储提供商实现 CSI 兼容的 Volume Plugin 的最小操作集和部署建议。CSI 规范的主要焦点是声明 Volume Plugin 必须实现的接口。  
+
 
 四、特殊类型配置  
+1 ConfigMap:用来放配置，与 Secret 是类似的，只是 ConfigMap 放的是明文的数据，Secret 是密文存放。  
+
+2 Secret:Secret 解决了密码、token、密钥等敏感数据的配置问题，而不需要把这些敏感数据暴露到镜像或者 Pod Spec 中。Secret 可以以 Volume 或者环境变量的方式使用。  
+
+2.1 Service Account：用来访问 Kubernetes API，由 Kubernetes 自动创建，并且会自动挂载到 Pod 的 /run/secrets/kubernetes.io/serviceaccount 目录中；  
+
+2.2 Opaque：base64 编码格式的 Secret，用来存储密码、密钥等；  
+
+2.3 kubernetes.io/dockerconfigjson：用来存储私有 docker registry 的认证信息。  
+
+3 downwardAPI: downwardAPI 这个模式和其他模式不一样的地方在于它不是为了存放容器的数据也不是用来进行容器和宿主机的数据交换的，而是让 pod 里的容器能够直接获取到这个 pod 对象本身的一些信息。downwardAPI 提供了两种方式用于将 pod 的信息注入到容器内部：环境变量：用于单个变量，可以将 pod 信息和容器信息直接注入容器内部,volume 挂载：将 pod 信息生成为文件，直接挂载到容器内部中去.  
 
 五、其他  
+1 Role: Role 是一组权限的集合，例如 Role 可以包含列出 Pod 权限及列出 Deployment 权限，Role 用于给某个 Namespace 中的资源进行鉴权。  
+2 RoleBinding ：将 Subject 绑定到 Role，RoleBinding 使规则在命名空间内生效。  
 
-#### 资源清单
+
+### 对象规约和状态
+#### 规约（Spec）：“spec” 是 “规约”、“规格” 的意思，spec 是必需的，它描述了对象的期望状态（Desired State）—— 希望对象所具有的特征。当创建 Kubernetes 对象时，必须提供对象的规约，用来描述该对象的期望状态，以及关于对象的一些基本信息（例如名称）。  
+
+#### 状态（Status）： 表示对象的实际状态，该属性由 k8s 自己维护，k8s 会通过一系列的控制器对对应对象进行管理，让对象尽可能的让实际状态与期望状态重合。  
 
 
-1.2.3.1 日志收集 比如 fluentd，logstash 等  
-
-1.2.3.2 系统监控 比如 Prometheus Node Exporter，collectd，New Relic agent，Ganglia gmond 等  
-
-1.2.3.3 系统程序 比如 kube-proxy, kube-dns, glusterd, ceph 等  
 
 
 
