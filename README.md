@@ -107,9 +107,13 @@
 
 1.2 控制器  
 
-1.2.1 适用有状态服务  
+1.2.1 适用无状态服务  
 
 1.2.1.1 ReplicationController（RC）：Replication Controller 简称 RC，RC 是 Kubernetes 系统中的核心概念之一，简单来说，RC 可以保证在任意时间运行 Pod 的副本数量，能够保证 Pod 总是可用的。如果实际 Pod 数量比指定的多那就结束掉多余的，如果实际数量比指定的少就新启动一些Pod，当 Pod 失败、被删除或者挂掉后，RC 都会去自动创建新的 Pod 来保证副本数量，所以即使只有一个 Pod，我们也应该使用 RC 来管理我们的 Pod。可以说，通过 ReplicationController，Kubernetes 实现了 Pod 的高可用性。  
+
+![image](https://github.com/user-attachments/assets/51123021-0bed-456d-91a6-5a91fc3d3886)  
+
+
 
 1.2.1.2 ReplicaSet（RS）：RC （ReplicationController ）主要的作用就是用来确保容器应用的副本数始终保持在用户定义的副本数 。即如果有容器异常退出，会自动创建新的 Pod 来替代；而如果异常多出来的容器也会自动回收（已经成为过去时），在 v1.11 版本废弃。​Kubernetes 官方建议使用 RS（ReplicaSet ） 替代 RC （ReplicationController ） 进行部署，RS 跟 RC 没有本质的不同，只是名字不一样，并且 RS 支持集合式的 selector。label （标签）是附加到 Kubernetes 对象（比如 Pods）上的键值对，用于区分对象（比如Pod、Service）。 label 旨在用于指定对用户有意义且相关的对象的标识属性，但不直接对核心系统有语义含义。 label 可以用于组织和选择对象的子集。label 可以在创建时附加到对象，随后可以随时添加和修改。可以像 namespace 一样，使用 label 来获取某类对象，但 label 可以与 selector 一起配合使用，用表达式对条件加以限制，实现更精确、更灵活的资源查找。
 label 与 selector 配合，可以实现对象的“关联”，“Pod 控制器” 与 Pod 是相关联的 —— “Pod 控制器”依赖于 Pod，可以给 Pod 设置 label，然后给“控制器”设置对应的 selector，这就实现了对象的关联。  
@@ -124,8 +128,40 @@ label 与 selector 配合，可以实现对象的“关联”，“Pod 控制器
 
 1.2.1.3.4 暂停与恢复 Deployment  
 
-1.2.2适用无状态服务  
+1.2.2 适用有状态服务：StatefulSet 中每个 Pod 的 DNS 格式为 statefulSetName-{0..N-1}.serviceName.namespace.svc.cluster.local；serviceName 为 Headless Service 的名字，0..N-1 为 Pod 所在的序号，从 0 开始到 N-1，statefulSetName 为 StatefulSet 的名字，namespace 为服务所在的 namespace，Headless Servic 和 StatefulSet 必须在相同的namespace，.cluster.local 为 Cluster Domain;StatefulSet 是用来管理有状态应用的工作负载 API 对象。StatefulSet 用来管理某 Pod 集合的部署和扩缩， 并为这些 Pod 提供持久存储和持久标识符。和 Deployment 类似， StatefulSet 管理基于相同容器规约的一组 Pod。但和 Deployment 不同的是， StatefulSet 为它们的每个 Pod 维护了一个有粘性的 ID。这些 Pod 是基于相同的规约来创建的， 但是不能相互替换：无论怎么调度，每个 Pod 都有一个永久不变的 ID。如果希望使用存储卷为工作负载提供持久存储，可以使用 StatefulSet 作为解决方案的一部分。 尽管 StatefulSet 中的单个 Pod 仍可能出现故障， 但持久的 Pod 标识符使得将现有卷与替换已失败 Pod 的新 Pod 相匹配变得更加容易。
 
+1.2.2.1 主要特点  
+1.2.2.1.1 稳定的、唯一的网络标识符：稳定的网络标志，即 Pod 重新调度后其 PodName 和 HostName 不变，基于 Headless Service（即没有 Cluster IP 的 Service）来实现  
+
+1.2.2.1.2 稳定的、持久的存储：即 Pod 重新调度后还是能访问到相同的持久化数据，基于 PVC 来实现  
+
+1.2.2.1.3 有序的、优雅的部署和扩缩：有序部署，有序扩展，即 Pod 是有顺序的，在部署或者扩展的时候要依据定义的顺序依次依次进行（即从 0到 N-1，在下一个Pod 运行之前所有之前的 Pod 必须都是 Running 和 Ready 状态），基于 init containers 来实现  
+
+1.2.2.1.4 有序的、自动的滚动更新：有序收缩，有序删除（即从 N-1 到 0）  
+
+1.2.2.2 组成  
+
+1.2.2.2.1 Headless Service：用于定义网络标志（DNS domain）Domain Name Server：域名服务将域名与 ip 绑定映射关系；服务名 => 访问路径（域名） => ip  
+
+1.2.2.2.2 volumeClaimTemplate：用于创建 PersistentVolumes持久化模板  
+
+1.2.2.3 注意事项  
+
+1.2.2.3.1 kubernetes v1.5 版本以上才支持  
+
+1.2.2.3.2 所有Pod的Volume必须使用PersistentVolume或者是管理员事先创建好  
+
+1.2.2.3.3 为了保证数据安全，删除StatefulSet时不会删除Volume  
+
+1.2.2.3.4 StatefulSet 需要一个 Headless Service 来定义 DNS domain，需要在 StatefulSet 之前创建好  
+
+1.2.3 守护进程：DaemonSet 保证在每个 Node 上都运行一个容器副本，常用来部署一些集群的日志、监控或者其他系统管理应用。  
+
+1.2.3.1 日志收集 比如 fluentd，logstash 等  
+
+1.2.3.2 系统监控 比如 Prometheus Node Exporter，collectd，New Relic agent，Ganglia gmond 等  
+
+1.2.3.3 系统程序 比如 kube-proxy, kube-dns, glusterd, ceph 等  
 
 
 
