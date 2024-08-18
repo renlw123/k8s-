@@ -175,10 +175,22 @@ label 与 selector 配合，可以实现对象的“关联”，“Pod 控制器
 
 1.2.3.3 系统程序 比如 kube-proxy, kube-dns, glusterd, ceph 等  
 
+1.2.4 任务或定时任务  
 
+1.2.4.1 Job：一次性任务，运行完成后Pod销毁，不再重新启动新容器。  
 
+1.2.4.2 CronJob: CronJob 是在 Job 基础上加上了定时功能。  
 
 二、服务发现  
+
+![image](https://github.com/user-attachments/assets/58159446-5bdd-4dd9-a55b-c4502fb0ee64)  
+
+
+1 service:“Service” 简写 “svc”。Pod 不能直接提供给外网访问，而是应该使用 service。Service 就是把 Pod 暴露出来提供服务，Service 才是真正的“服务”，它的中文名就叫“服务”。可以说 Service 是一个应用服务的抽象，定义了 Pod 逻辑集合和访问这个 Pod 集合的策略。Service 代理 Pod 集合，对外表现为一个访问入口，访问该入口的请求将经过负载均衡，转发到后端 Pod 中的容器。  
+
+2 ingress: Ingress 可以提供外网访问 Service 的能力。可以把某个请求地址映射、路由到特定的 service。ingress 需要配合 ingress controller 一起使用才能发挥作用，ingress 只是相当于路由规则的集合而已，真正实现路由功能的，是 Ingress Controller，ingress controller 和其它 k8s 组件一样，也是在 Pod 中运行。  
+
+
 
 三、存储  
 
@@ -187,6 +199,15 @@ label 与 selector 配合，可以实现对象的“关联”，“Pod 控制器
 五、其他  
 
 #### 资源清单
+
+
+1.2.3.1 日志收集 比如 fluentd，logstash 等  
+
+1.2.3.2 系统监控 比如 Prometheus Node Exporter，collectd，New Relic agent，Ganglia gmond 等  
+
+1.2.3.3 系统程序 比如 kube-proxy, kube-dns, glusterd, ceph 等  
+
+
 
 
 
