@@ -226,19 +226,212 @@ label 与 selector 配合，可以实现对象的“关联”，“Pod 控制器
 
 
 
-
 # 实战
 
 ## 搭建k8s集群（kubeadm方案）
+
 ### 服务器要求 
+
 三台服务器（centos7.9）
+
 #### 配置
+
 四核四G 20G硬盘容量
+
 #### 软件环境 
+
 Docker20 k8s-1.23.6
+
 #### 安装步骤
+
 一、初始操作  
 1.关闭防火墙  
+
+```shell
+systemctl stop firewalld
+systemctl disable firewalld
+```
+
+2.关闭selinux
+
+```shell
+sed -i 's/enforcing/disabled/' /etc/selinux/config  # 永久
+setenforce 0  # 临时
+```
+
+3.关闭swap
+
+```shell
+swapoff -a  # 临时
+sed -ri 's/.*swap.*/#&/' /etc/fstab    # 永久
+```
+
+4.在master添加hosts
+
+```shell
+cat >> /etc/hosts << EOF
+192.168.30.163 k8s-master
+192.168.30.163 k8s-node1
+192.168.30.163 k8s-node2
+EOF
+```
+
+5.将桥接的IPv4流量传递到iptables的链
+
+```shell
+cat > /etc/sysctl.d/k8s.conf << EOF
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+```
+
+6.sysctl --system  # 生效
+
+7.时间同步
+
+```shell
+yum install ntpdate -y
+ntpdate time.windows.com
+```
+
+二、安装基础软件（所有节点）
+
+1.安装docker 20+（这里我安装的Docker version 20.10.14, build a224086，docker版本过新的话 k8s 1.23.6会不适配报错）
+
+2.添加阿里云镜像源 
+
+```shell
+cat > /etc/yum.repos.d/kubernetes.repo << EOF
+[kubernetes]
+name=Kubernetes
+baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+
+gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+EOF
+```
+
+3.安装kubeadm、kubelet、kubectl
+
+```shell
+yum install -y kubelet-1.23.6 kubeadm-1.23.6 kubectl-1.23.6
+
+systemctl enable kubelet
+
+# 配置关闭 Docker 的 cgroups，修改 /etc/docker/daemon.json，加入以下内容
+"exec-opts": ["native.cgroupdriver=systemd"]
+
+# 重启 docker
+systemctl daemon-reload
+systemctl restart docker
+```
+
+三、部署k8s master
+
+1.在master节点下执行
+
+```shell
+kubeadm init \
+      --apiserver-advertise-address=192.168.30.161 \
+      --image-repository registry.aliyuncs.com/google_containers \
+      --kubernetes-version v1.23.6 \
+      --service-cidr=10.96.0.0/12 \
+      --pod-network-cidr=10.244.0.0/16
+```
+
+初始化好后确认kubelet可用systemctl status kubelet
+
+2.安装成功后，复制如下配置并执行
+
+```shell
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+kubectl get nodes
+```
+
+四、加入node1与node2
+
+1.下方命令可以在 k8s master 控制台初始化成功后复制 join 命令（token与sha256在步骤二与步骤三获取）
+
+```shell
+kubeadm join 192.168.30.161:6443 --token 65bgi6.x5t814c192j2g3f2 --discovery-token-ca-cert-hash sha256:b833c6c86fa042470ecd9fd2833e1bc944567db97f2092d5d1fd18b40f151f2c
+```
+
+2.如果初始化的 token 不小心清空了，可以通过如下命令获取或者重新申请
+
+```shell
+# 如果 token 已经过期，就重新申请
+kubeadm token create
+
+# token 没有过期可以通过如下命令获取
+kubeadm token list
+```
+
+3.获取 --discovery-token-ca-cert-hash 值，得到值后需要在前面拼接上 sha256:
+
+```shell
+openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | \
+openssl dgst -sha256 -hex | sed 's/^.* //'
+```
+
+五、部署CNI网络插件
+
+1.在 master 节点上执行（我这边在/opt/k8s）
+
+```shell
+# 下载 calico 配置文件，可能会网络超时
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml -O
+
+# 修改 calico.yaml 文件中的 CALICO_IPV4POOL_CIDR 配置，修改为与初始化的 cidr 相同
+
+# 修改 IP_AUTODETECTION_METHOD 下的网卡名称
+
+# 删除镜像 docker.io/ 前缀，避免下载过慢导致失败
+sed -i 's#docker.io/##g' calico.yaml
+```
+
+2.注意，我这里遇到一个问题，就是国内各大厂商的镜像源已经在24年6月份左右由于管制，所以现在一般的镜像都用不了了，我这边通过代理docker pull直接拉下来的，代理地址为 [swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io]()
+
+```shell
+docker pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/cni:v3.25.0
+docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/cni:v3.25.0  docker.io/calico/cni:v3.25.0
+
+
+
+docker pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/node:v3.25.0
+docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/node:v3.25.0  docker.io/calico/node:v3.25.0
+
+
+docker pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/kube-controllers:v3.25.0
+docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/kube-controllers:v3.25.0  docker.io/calico/kube-controllers:v3.25.0
+
+
+
+docker pull swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/upgrade-ipam:v3.25.0
+docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/upgrade-ipam:v3.25.0  docker.io/calico/upgrade-ipam:v3.25.0
+```
+
+3.或者用自己的可以用的镜像仓库，去calico.yaml文件中全局搜索docker，把地址替换一个可用的即可
+
+六、测试集群
+
+```shell
+# 创建部署
+kubectl create deployment nginx --image=nginx
+
+kubectl create secret docker-registry myregistrykey --docker-server=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/
+
+# 暴露端口
+kubectl expose deployment nginx --port=80 --type=NodePort
+
+# 查看 pod 以及服务信息
+kubectl get pod,svc
+```
+
+ 
 
 
 
