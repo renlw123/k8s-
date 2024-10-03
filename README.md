@@ -391,6 +391,9 @@ curl https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/ca
 
 # 删除镜像 docker.io/ 前缀，避免下载过慢导致失败
 sed -i 's#docker.io/##g' calico.yaml
+
+# 执行部署
+kubectl apply -f calico.yaml
 ```
 
 2.注意，我这里遇到一个问题，就是国内各大厂商的镜像源已经在24年6月份左右由于管制，所以现在一般的镜像都用不了了，我这边通过代理docker pull直接拉下来的，代理地址为 [swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io]()
