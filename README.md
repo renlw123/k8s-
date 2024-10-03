@@ -419,6 +419,9 @@ docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/upgrade-ip
 
 3.或者用自己的可以用的镜像仓库，去calico.yaml文件中全局搜索docker，把地址替换一个可用的即可
 
+4.安装好网络插件可查看集群状态
+
+
 六、测试集群
 
 ```shell
