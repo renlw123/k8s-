@@ -472,6 +472,10 @@ kubectl expose deployment nginx --port=80 --type=NodePort
 # 查看 pod 以及服务信息
 kubectl get pod,svc
 ```
+
+![image](https://github.com/user-attachments/assets/e07e6bc8-dcfd-4337-a1e4-bc8ad0e58740)
+
+
 ![image](https://github.com/user-attachments/assets/a670a876-182c-4488-9822-3335870c7161)
 
  
