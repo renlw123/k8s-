@@ -471,7 +471,12 @@ kubectl expose deployment nginx --port=80 --type=NodePort
 
 # 查看 pod 以及服务信息
 kubectl get pod,svc
+
+# 如果有问题也可通过查看详细日志
+journalctl -u docker
+journalctl -u docker
 ```
+
 
 ![image](https://github.com/user-attachments/assets/e07e6bc8-dcfd-4337-a1e4-bc8ad0e58740)
 
