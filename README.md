@@ -475,6 +475,9 @@ kubectl get pod,svc
 # 如果有问题也可通过查看详细日志
 journalctl -u docker
 journalctl -u docker
+
+kubectl logs nginx-664975df4-wvk8v
+
 ```
 
 
