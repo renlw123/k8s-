@@ -420,6 +420,42 @@ docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/upgrade-ip
 3.或者用自己的可以用的镜像仓库，去calico.yaml文件中全局搜索docker，把地址替换一个可用的即可
 
 4.安装好网络插件可查看集群状态
+```shell
+[root@master k8s]# kubectl get po -n kube-system
+NAME                                      READY   STATUS    RESTARTS       AGE
+calico-kube-controllers-6d768559b-rmctg   1/1     Running   1 (21h ago)    22h
+calico-node-458jq                         1/1     Running   1 (21h ago)    22h
+calico-node-8d65m                         1/1     Running   1 (57m ago)    22h
+calico-node-m7vn9                         1/1     Running   1 (57m ago)    22h
+coredns-6d8c4cb4d-8fxt4                   1/1     Running   1 (21h ago)    23h
+coredns-6d8c4cb4d-xpgpb                   1/1     Running   1 (21h ago)    23h
+etcd-master                               1/1     Running   22 (21h ago)   26h
+kube-apiserver-master                     1/1     Running   23 (21h ago)   26h
+kube-controller-manager-master            1/1     Running   22 (21h ago)   26h
+kube-proxy-2mnsw                          1/1     Running   21 (21h ago)   26h
+kube-proxy-sqcwg                          1/1     Running   2 (57m ago)    26h
+kube-proxy-vd2vp                          1/1     Running   2 (57m ago)    26h
+kube-scheduler-master                     1/1     Running   22 (21h ago)   26h
+```
+如果有长时间pending或者err的话，可以产看一下pod的详细信息
+```shell
+ kubectl describe po calico-node-458jq -n kube-system
+Name:                 calico-node-458jq
+Namespace:            kube-system
+Priority:             2000001000
+Priority Class Name:  system-node-critical
+Node:                 master/192.168.30.161
+Start Time:           Wed, 02 Oct 2024 19:57:37 +0800
+Labels:               controller-revision-hash=8bb9f5d9d
+                      k8s-app=calico-node
+                      pod-template-generation=2
+Annotations:          <none>
+Status:               Running
+IP:                   192.168.30.161
+IPs:
+  IP:           192.168.30.161
+Controlled By:  DaemonSet/calico-node
+```
 
 
 六、测试集群
@@ -436,6 +472,7 @@ kubectl expose deployment nginx --port=80 --type=NodePort
 # 查看 pod 以及服务信息
 kubectl get pod,svc
 ```
+![image](https://github.com/user-attachments/assets/a670a876-182c-4488-9822-3335870c7161)
 
  
 
