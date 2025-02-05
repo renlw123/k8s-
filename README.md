@@ -345,7 +345,9 @@ kubeadm init \
 
 初始化好后确认kubelet可用systemctl status kubelet
 
-2.安装成功后，复制如下配置并执行
+2.安装成功后，复制如下配置并执行（确保 kubectl 具备正确的配置文件，以便访问 Kubernetes API 服务器。
+允许当前用户（非 root）使用 kubectl 运行 Kubernetes 命令。
+验证 Kubernetes 节点的状态，检查集群是否正常运行。）
 
 ```shell
 mkdir -p $HOME/.kube
