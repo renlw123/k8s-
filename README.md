@@ -425,7 +425,7 @@ docker tag  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/calico/upgrade-ip
 
 4.安装好网络插件可查看集群状态
 ```shell
-[root@master k8s]# kubectl get po -n kube-system
+[root@master k8s]# kubectl get po -n kube-system  
 NAME                                      READY   STATUS    RESTARTS       AGE
 calico-kube-controllers-6d768559b-rmctg   1/1     Running   1 (21h ago)    22h
 calico-node-458jq                         1/1     Running   1 (21h ago)    22h
@@ -440,6 +440,25 @@ kube-proxy-2mnsw                          1/1     Running   21 (21h ago)   26h
 kube-proxy-sqcwg                          1/1     Running   2 (57m ago)    26h
 kube-proxy-vd2vp                          1/1     Running   2 (57m ago)    26h
 kube-scheduler-master                     1/1     Running   22 (21h ago)   26h
+```
+
+```
+[root@master ~]#  kubectl get pods -A -o wide
+NAMESPACE     NAME                                      READY   STATUS    RESTARTS      AGE    IP               NODE     NOMINATED NODE   READINESS GATES
+default       nginx-664975df4-ksfz2                     1/1     Running   0             33h    10.244.104.3     node2    <none>           <none>
+kube-system   calico-kube-controllers-6d768559b-rmctg   1/1     Running   6             126d   10.244.219.84    master   <none>           <none>
+kube-system   calico-node-929rq                         1/1     Running   0             13m    192.168.30.163   node2    <none>           <none>
+kube-system   calico-node-9qz8b                         1/1     Running   0             12m    192.168.30.161   master   <none>           <none>
+kube-system   calico-node-dgd9r                         1/1     Running   0             13m    192.168.30.162   node1    <none>           <none>
+kube-system   coredns-6d8c4cb4d-8fxt4                   1/1     Running   6             126d   10.244.219.86    master   <none>           <none>
+kube-system   coredns-6d8c4cb4d-xpgpb                   1/1     Running   6             126d   10.244.219.85    master   <none>           <none>
+kube-system   etcd-master                               1/1     Running   10            126d   192.168.30.161   master   <none>           <none>
+kube-system   kube-apiserver-master                     1/1     Running   3             126d   192.168.30.161   master   <none>           <none>
+kube-system   kube-controller-manager-master            1/1     Running   1             126d   192.168.30.161   master   <none>           <none>
+kube-system   kube-proxy-2mnsw                          1/1     Running   1             126d   192.168.30.161   master   <none>           <none>
+kube-system   kube-proxy-sqcwg                          1/1     Running   4 (33h ago)   126d   192.168.30.163   node2    <none>           <none>
+kube-system   kube-proxy-vd2vp                          1/1     Running   4 (33h ago)   126d   192.168.30.162   node1    <none>           <none>
+kube-system   kube-scheduler-master                     1/1     Running   9             126d   192.168.30.161   master   <none>           <none>
 ```
 如果有长时间pending或者err的话，可以产看一下pod的详细信息
 ```shell
