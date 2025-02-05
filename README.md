@@ -276,7 +276,9 @@ cat >> /etc/hosts << EOF
 EOF
 ```
 
-5.将桥接的IPv4流量传递到iptables的链
+5.将桥接的IPv4流量传递到iptables的链（该配置确保流经这些桥接设备的数据包会经过 iptables 规则处理，否则 Kubernetes 可能无法正确管理网络流量，如：
+Pod 之间的网络通信可能失败。
+Service 的 ClusterIP 或 NodePort 可能无法正确转发流量）
 
 ```shell
 cat > /etc/sysctl.d/k8s.conf << EOF
