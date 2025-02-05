@@ -270,8 +270,8 @@ sed -ri 's/.*swap.*/#&/' /etc/fstab    # 永久
 
 ```shell
 cat >> /etc/hosts << EOF
-192.168.30.163 k8s-master
-192.168.30.163 k8s-node1
+192.168.30.161 k8s-master
+192.168.30.162 k8s-node1
 192.168.30.163 k8s-node2
 EOF
 ```
