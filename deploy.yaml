@@ -1,0 +1,43 @@
+apiVersion: apps/v1  # 正确的 API 版本
+kind: Deployment  # 资源类型
+metadata:  # 元数据
+  name: nginx-demo2  # Pod 名称
+  labels:  # 自定义标签
+    type: app
+    test: 1.0.0
+  namespace: 'default'  # 命名空间
+spec:  # Deployment 规范
+  replicas: 1  # Pod 副本数
+  selector:
+    matchLabels:
+      type: app  # Selector 匹配标签
+  template:  # Pod 模板
+    metadata:
+      labels:
+        type: app  # Pod 标签
+        test: 1.0.0
+    spec:  # Pod 规范
+      containers:  # 容器描述
+      - name: nginx  # 容器名称
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest  # 镜像
+        imagePullPolicy: IfNotPresent  # 镜像拉取策略
+        command:
+        - nginx
+        - -g
+        - 'daemon off;'  # 启动命令
+        workingDir: /usr/share/nginx/html  # 工作目录
+        ports:
+        - name: http  # 端口名称
+          containerPort: 80  # 容器端口
+          protocol: TCP  # 协议
+        env:  # 环境变量
+        - name: JVM_OPTS
+          value: '-Xms128m -Xmx128m'  # 设置 JVM 内存选项
+        resources:
+          requests:  # 最低资源要求
+            cpu: 100m
+            memory: 128Mi
+          limits:  # 最大资源限制
+            cpu: 200m
+            memory: 256Mi
+  # 不需要单独定义 restartPolicy，在 Deployment 中会自动管理容器重启策略
