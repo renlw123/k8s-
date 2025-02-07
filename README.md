@@ -1076,8 +1076,15 @@ spec:  # Deployment 规范
             cpu: 200m
             memory: 256Mi
 ```
+启动起来，然后通过livenessProbe404回一直重启，中间把kubectl cp index222.html nginx-demo2-d798dccff-rfphr:/usr/share/nginx/html/ index222.html 拷贝到容器中，进而实现一开始一直尝试，直到不在404启动成功
 
 ```
+[root@master k8sfile]# kubectl get po
+NAME                          READY   STATUS    RESTARTS        AGE
+nginx-demo2-d798dccff-rfphr   1/1     Running   2 (3m50s ago)   5m10s
+
+---------------------------可以看到上面重启了两次，后发现了index222.html，就不再重启了
+
 apiVersion: apps/v1  # API 版本
 kind: Deployment  # 资源类型
 metadata:  # 元数据
@@ -1113,7 +1120,7 @@ spec:  # Deployment 规范
           timeoutSeconds: 5  # 超时时间
         livenessProbe:  # 存活探针
           httpGet: 
-            path: /index.html
+            path: /index222.html 404
             port: 80  # 通过 TCP 连接端口 80 检查存活状态
           failureThreshold: 3
           periodSeconds: 10
