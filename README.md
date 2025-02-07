@@ -774,3 +774,307 @@ $ kubectl taint nodes foo dedicated=special-user:NoSchedule
 
 
 
+
+
+
+## 深入pod
+
+### 探针
+#### 类型
+##### StartupProbe k8s 1.16 版本新增的探针，用于判断应用程序是否已经启动了。当配置了 startupProbe 后，会先禁用其他探针，直到 startupProbe 成功后，其他探针才会继续。作用：由于有时候不能准确预估应用一定是多长时间启动成功，因此配置另外两种方式不方便配置初始化时长来检测，而配置了 statupProbe 后，只有在应用启动成功了，才会执行另外两种探针，可以更加方便的结合使用另外两种探针使用。
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-container
+    image: my-image
+    startupProbe:
+      httpGet:
+        path: /startup
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 20
+```
+##### LivenessProbe 用于探测容器中的应用是否运行，如果探测失败，kubelet 会根据配置的重启策略进行重启，若没有配置，默认就认为容器启动成功，不会执行重启策略。
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-container
+    image: my-image
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+        scheme: HTTP
+      initialDelaySeconds: 60
+      periodSeconds: 10
+      failureThreshold: 5
+      successThreshold: 1
+      timeoutSeconds: 5
+```
+##### ReadinessProbe 用于探测容器内的程序是否健康，它的返回值如果返回 success，那么就认为该容器已经完全启动，并且该容器是可以接收外部流量的。
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-container
+    image: my-image
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 8181
+        scheme: HTTP
+      periodSeconds: 10 # 探测间隔时间
+      failureThreshold: 3 # 连续失败次数
+      successThreshold: 1 # 连续成功次数
+      timeoutSeconds: 1 # 探测超时时间
+```
+#### 探测方式
+##### ExecAction 在容器内部执行一个命令，如果返回值为 0，则任务容器时健康的。
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-container
+    image: my-image
+    livenessProbe:
+      exec:
+        command:
+          - cat
+          - /health
+      initialDelaySeconds: 10  # 容器启动后等待 10 秒再开始探测
+      periodSeconds: 5         # 每 5 秒探测一次
+      failureThreshold: 3      # 失败 3 次后重启容器
+      successThreshold: 1      # 成功 1 次就认为健康
+      timeoutSeconds: 2        # 每次探测的超时时间
+```
+##### TCPSocketAction 通过 tcp 连接监测容器内端口是否开放，如果开放则证明该容器健康
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-container
+    image: my-image
+    livenessProbe:
+      tcpSocket:
+        port: 80
+      initialDelaySeconds: 10  # 容器启动后等待 10 秒再开始探测
+      periodSeconds: 5         # 每 5 秒探测一次
+      failureThreshold: 3      # 失败 3 次后认为容器不健康
+      successThreshold: 1      # 成功 1 次就认为健康
+      timeoutSeconds: 2        # 每次探测的超时时间
+```
+##### HTTPGetAction 生产环境用的较多的方式，发送 HTTP 请求到容器内的应用程序，如果接口返回的状态码在 200~400 之间，则认为容器健康。
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+  - name: my-container
+    image: my-image
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+        scheme: HTTP
+        httpHeaders:
+          - name: xxx
+            value: xxx
+      initialDelaySeconds: 10  # 容器启动后等待 10 秒再开始探测
+      periodSeconds: 5         # 每 5 秒探测一次
+      failureThreshold: 5      # 失败 5 次后认为容器不健康
+      successThreshold: 1      # 成功 1 次就认为健康
+      timeoutSeconds: 3        # 每次探测的超时时间
+```
+#### 如果不知道探针这种如何配置，可以找一个已有的查看其配置是如何配置的
+```
+[root@master k8sfile]# kubectl get pod -n kube-system
+NAME                                      READY   STATUS    RESTARTS        AGE
+calico-kube-controllers-6d768559b-rmctg   1/1     Running   10 (123m ago)   128d
+calico-node-929rq                         1/1     Running   2 (127m ago)    47h
+calico-node-9qz8b                         1/1     Running   4 (123m ago)    47h
+calico-node-dgd9r                         1/1     Running   2 (127m ago)    47h
+coredns-6d8c4cb4d-8fxt4                   1/1     Running   10 (123m ago)   128d
+coredns-6d8c4cb4d-xpgpb                   1/1     Running   10 (123m ago)   128d
+etcd-master                               1/1     Running   15 (123m ago)   128d
+kube-apiserver-master                     1/1     Running   8 (123m ago)    128d
+kube-controller-manager-master            1/1     Running   5 (123m ago)    128d
+kube-proxy-2mnsw                          1/1     Running   5 (123m ago)    128d
+kube-proxy-sqcwg                          1/1     Running   6 (127m ago)    128d
+kube-proxy-vd2vp                          1/1     Running   6 (127m ago)    128d
+kube-scheduler-master                     1/1     Running   14 (123m ago)   128d
+[root@master k8sfile]# kubectl get deploy -n kube-system
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+calico-kube-controllers   1/1     1            1           128d
+coredns                   2/2     2            2           128d
+[root@master k8sfile]# kubectl edit deploy coredns -n kube-system
+# Please edit the object below. Lines beginning with a '#' will be ignored,
+# and an empty file will abort the edit. If an error occurs while saving this file will be
+# reopened with the relevant failures.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  creationTimestamp: "2024-10-02T07:19:56Z"
+  generation: 1
+  labels:
+    k8s-app: kube-dns
+  name: coredns
+  namespace: kube-system
+  resourceVersion: "104875"
+  uid: 2b3ce74a-2e07-4d7e-a06d-98d17b8d041a
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        k8s-app: kube-dns
+    spec:
+      containers:
+      - args:
+        - -conf
+        - /etc/coredns/Corefile
+        image: registry.aliyuncs.com/google_containers/coredns:v1.8.6
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: coredns
+        ports:
+        - containerPort: 53
+          name: dns
+          protocol: UDP
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        - containerPort: 9153
+          name: metrics
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: 8181
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            memory: 170Mi
+          requests:
+            cpu: 100m
+            memory: 70Mi
+        securityContext:
+```
+
+#### 测试探针 kubectl create -f test2.yaml
+```
+apiVersion: apps/v1  # API 版本
+kind: Deployment  # 资源类型
+metadata:  # 元数据
+  name: nginx-demo2  # Deployment 名称
+  namespace: default  # 命名空间
+  labels:  # 自定义标签
+    type: app
+    test: 1.0.0
+spec:  # Deployment 规范
+  replicas: 1  # Pod 副本数
+  selector:
+    matchLabels:
+      type: app  # Selector 匹配标签
+  template:  # Pod 模板
+    metadata:
+      labels:
+        type: app  # Pod 标签
+        test: 1.0.0
+    spec:  # Pod 规范
+      containers:  # 容器描述
+      - name: nginx  # 容器名称
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest  # 镜像
+        imagePullPolicy: IfNotPresent  # 镜像拉取策略
+        # startupProbe:  # 启动探针
+        #   httpGet: 
+        #     path: /index.html
+        #     port: 80
+        #   failureThreshold: 3  # 失败 3 次认为启动失败
+        #   periodSeconds: 10  # 探测间隔
+        #   successThreshold: 1  # 成功 1 次认为启动成功
+        #   timeoutSeconds: 5  # 超时时间
+        livenessProbe:  # 存活探针
+          tcpSocket:
+            port: 80  # 通过 TCP 连接端口 80 检查存活状态
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        # readinessProbe:  # 就绪探针
+        #   exec:
+        #     command:
+        #       - sh
+        #       - -c
+        #       - "sleep 5; echo success > /inited"
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        command:
+        - nginx
+        - -g
+        - 'daemon off;'  # 启动命令
+        workingDir: /usr/share/nginx/html  # 工作目录
+        ports:
+        - name: http  # 端口名称
+          containerPort: 80  # 容器端口
+          protocol: TCP  # 协议
+        env:  # 环境变量
+        - name: JVM_OPTS
+          value: '-Xms128m -Xmx128m'  # 设置 JVM 内存选项
+        resources:
+          requests:  # 最低资源要求
+            cpu: 100m
+            memory: 128Mi
+          limits:  # 最大资源限制
+            cpu: 200m
+            memory: 256Mi
+
+
+```
