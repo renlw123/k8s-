@@ -1075,6 +1075,67 @@ spec:  # Deployment 规范
           limits:  # 最大资源限制
             cpu: 200m
             memory: 256Mi
+```
 
-
+```
+apiVersion: apps/v1  # API 版本
+kind: Deployment  # 资源类型
+metadata:  # 元数据
+  name: nginx-demo2  # Deployment 名称
+  namespace: default  # 命名空间
+  labels:  # 自定义标签
+    type: app
+    test: 1.0.0
+spec:  # Deployment 规范
+  replicas: 1  # Pod 副本数
+  selector:
+    matchLabels:
+      type: app  # Selector 匹配标签
+  template:  # Pod 模板
+    metadata:
+      labels:
+        type: app  # Pod 标签
+        test: 1.0.0
+    spec:  # Pod 规范
+      containers:  # 容器描述
+      - name: nginx  # 容器名称
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest  # 镜像
+        imagePullPolicy: IfNotPresent  # 镜像拉取策略
+        startupProbe:  # 启动探针
+          exec: 
+            command: 
+            - sh
+            - -c
+            - "sleep 3; echo success > /inited"
+          failureThreshold: 3  # 失败 3 次认为启动失败
+          periodSeconds: 10  # 探测间隔
+          successThreshold: 1  # 成功 1 次认为启动成功
+          timeoutSeconds: 5  # 超时时间
+        livenessProbe:  # 存活探针
+          httpGet: 
+            path: /index.html
+            port: 80  # 通过 TCP 连接端口 80 检查存活状态
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        command:
+        - nginx
+        - -g
+        - 'daemon off;'  # 启动命令
+        workingDir: /usr/share/nginx/html  # 工作目录
+        ports:
+        - name: http  # 端口名称
+          containerPort: 80  # 容器端口
+          protocol: TCP  # 协议
+        env:  # 环境变量
+        - name: JVM_OPTS
+          value: '-Xms128m -Xmx128m'  # 设置 JVM 内存选项
+        resources:
+          requests:  # 最低资源要求
+            cpu: 100m
+            memory: 128Mi
+          limits:  # 最大资源限制
+            cpu: 200m
+            memory: 256Mi
 ```
