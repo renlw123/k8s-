@@ -1146,3 +1146,193 @@ spec:  # Deployment 规范
             cpu: 200m
             memory: 256Mi
 ```
+
+
+### Pod生命周期
+![image](https://github.com/user-attachments/assets/15e7d2f5-da8c-4550-98e6-31732a18dad5)
+#### Pod退出流程-删除操作
+##### Endpoint 删除 pod 的 ip 地址
+##### Pod 变成 Terminating 状态(变为删除中的状态后，会给 pod 一个宽限期，让 pod 去执行一些清理或销毁操作。)
+```
+apiVersion: v1 # api 文档版本
+kind: Pod  # 资源对象类型，也可以配置为像Deployment、StatefulSet这一类的对象
+metadata: # Pod 相关的元数据，用于描述 Pod 的数据
+  name: nginx-life # Pod 的名称
+  labels: # 定义 Pod 的标签
+    type: app # 自定义 label 标签，名字为 type，值为 app
+    test: 1.0.0 # 自定义 label 标签，描述 Pod 版本号
+  namespace: 'default' # 命名空间的配置
+spec: # 期望 Pod 按照这里面的描述进行创建
+  terminationGracePeriodSeconds: 30 # 当pod删除时设置的宽限时间
+  containers: # 对于 Pod 中的容器描述
+  - name: nginx # 容器的名称
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest # 指定容器的镜像
+    imagePullPolicy: IfNotPresent # 镜像拉取策略，指定如果本地有就用本地的，如果没有就拉取远程的
+    lifecycle: # 生命周期配置
+      postStart: 
+        exec: 
+          command: 
+            - sh
+            - -c
+            - "echo '<h1>pre stop</h1>' > /usr/share/nginx/html/prestop.html"
+      preStop: 
+        exec: 
+          command: 
+            - sh
+            - -c
+            - "sleep 50; echo 'sleep finished...' >> /usr/share/nginx/html/prestop.html"
+    command: # 指定容器启动时执行的命令
+    - nginx
+    - -g
+    - 'daemon off;' # nginx -g 'daemon off;'
+    workingDir: /usr/share/nginx/html # 定义容器启动后的工作目录
+    ports:
+    - name: http # 端口名称
+      containerPort: 80 # 描述容器内要暴露什么端口
+      protocol: TCP # 描述该端口是基于哪种协议通信的
+    env: # 环境变量
+    - name: JVM_OPTS # 环境变量名称
+      value: '-Xms128m -Xmx128m' # 环境变量的值
+    resources:
+      requests: # 最少需要多少资源
+        cpu: 100m # 限制 cpu 最少使用 0.1 个核心
+        memory: 128Mi # 限制内存最少使用 128兆
+      limits: # 最多可以用多少资源
+        cpu: 200m # 限制 cpu 最多使用 0.2 个核心
+        memory: 256Mi # 限制 最多使用 256兆
+  restartPolicy: OnFailure # 重启策略，只有失败的情况才会重启
+
+-------------------------------------------------------------
+[root@master ~]# kubectl get po -w
+NAME         READY   STATUS    RESTARTS   AGE
+nginx-life   1/1     Running             0          2s
+nginx-life   1/1     Terminating         0          12s
+nginx-life   1/1     Terminating         0          42s
+nginx-life   0/1     Terminating         0          44s
+nginx-life   0/1     Terminating         0          44s
+nginx-life   0/1     Terminating         0          44s
+
+```
+##### 执行 preStop 的指令
+
+
+#### Pod退出流程-删除操作(但是需要注意，由于 k8s 默认给 pod 的停止宽限时间为 30s，如果我们停止操作会超过 30s 时，不要光设置 sleep 50，还要将 terminationGracePeriodSeconds: 30 也更新成更长的时间，否则 k8s 最多只会在这个时间的基础上再宽限几秒，不会真正等待 50s)
+##### 注册中心下线
+##### 数据清理
+##### 数据销毁
+
+
+
+## 资源调度
+
+### Label 和 Selector
+#### 标签（Label）在各类资源的 metadata.labels 中进行配置
+```
+apiVersion: v1 # api 文档版本
+kind: Pod  # 资源对象类型，也可以配置为像Deployment、StatefulSet这一类的对象
+metadata: # Pod 相关的元数据，用于描述 Pod 的数据
+  name: nginx-life # Pod 的名称
+  labels: # 定义 Pod 的标签
+    type: app # 自定义 label 标签，名字为 type，值为 app
+    test: 1.0.0 # 自定义 label 标签，描述 Pod 版本号
+  namespace: 'default' # 命名空间的配置
+spec: # 期望 Pod 按照这里面的描述进行创建
+  terminationGracePeriodSeconds: 30 # 当pod删除时设置的宽限时间
+  containers: # 对于 Pod 中的容器描述
+  - name: nginx # 容器的名称
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest # 指定容器的镜像
+    imagePullPolicy: IfNotPresent # 镜像拉取策略，指定如果本地有就用本地的，如果没有就拉取远程的
+    lifecycle: # 生命周期配置
+      postStart: 
+        exec: 
+          command: 
+            - sh
+            - -c
+            - "echo '<h1>pre stop</h1>' > /usr/share/nginx/html/prestop.html"
+      preStop: 
+        exec: 
+          command: 
+            - sh
+            - -c
+            - "sleep 50; echo 'sleep finished...' >> /usr/share/nginx/html/prestop.html"
+    command: # 指定容器启动时执行的命令
+    - nginx
+    - -g
+    - 'daemon off;' # nginx -g 'daemon off;'
+    workingDir: /usr/share/nginx/html # 定义容器启动后的工作目录
+    ports:
+    - name: http # 端口名称
+      containerPort: 80 # 描述容器内要暴露什么端口
+      protocol: TCP # 描述该端口是基于哪种协议通信的
+    env: # 环境变量
+    - name: JVM_OPTS # 环境变量名称
+      value: '-Xms128m -Xmx128m' # 环境变量的值
+    resources:
+      requests: # 最少需要多少资源
+        cpu: 100m # 限制 cpu 最少使用 0.1 个核心
+        memory: 128Mi # 限制内存最少使用 128兆
+      limits: # 最多可以用多少资源
+        cpu: 200m # 限制 cpu 最多使用 0.2 个核心
+        memory: 256Mi # 限制 最多使用 256兆
+  restartPolicy: OnFailure # 重启策略，只有失败的情况才会重启
+
+------------------------------------------------------------------------
+[root@master k8sfile]# kubectl get po --show-labels
+NAME         READY   STATUS    RESTARTS   AGE   LABELS
+nginx-life   1/1     Running   0          7s    test=1.0.0,type=app
+```
+##### 临时创建label
+```
+[root@master k8sfile]# kubectl label pod nginx-life author=rlw
+pod/nginx-life labeled
+[root@master k8sfile]# kubectl get po --show-labels
+NAME         READY   STATUS    RESTARTS   AGE    LABELS
+nginx-life   1/1     Running   0          6m6s   author=rlw,test=1.0.0,type=app
+```
+
+##### 修改已经存在的标签
+```
+[root@master k8sfile]# kubectl label pod nginx-life author=rlw2
+error: 'author' already has a value (rlw), and --overwrite is false
+[root@master k8sfile]# kubectl label pod nginx-life author=rlw2 --overwrite
+pod/nginx-life labeled
+[root@master k8sfile]# kubectl get po --show-labels
+NAME         READY   STATUS    RESTARTS   AGE    LABELS
+nginx-life   1/1     Running   0          8m8s   author=rlw2,test=1.0.0,type=app
+```
+##### 查看label
+```
+[root@master k8sfile]# kubectl get po -A -l author=rlw2
+NAMESPACE   NAME         READY   STATUS    RESTARTS   AGE
+default     nginx-life   1/1     Running   0          10m
+[root@master k8sfile]# kubectl  get po --show-labels
+NAME         READY   STATUS    RESTARTS   AGE   LABELS
+nginx-life   1/1     Running   0          10m   author=rlw2,test=1.0.0,type=app
+```
+#### 选择器（Selector）
+```
+[root@master k8sfile]#
+------------------------------------------------------------------------------
+[root@master k8sfile]# kubectl  get po --show-labels
+NAME         READY   STATUS    RESTARTS   AGE   LABELS
+nginx-life   1/1     Running   0          10m   author=rlw2,test=1.0.0,type=app
+[root@master k8sfile]# kubectl get po -l author!=rlw2,test=1.0.1
+No resources found in default namespace.
+[root@master k8sfile]# kubectl get po -l author!=rlw2,test=1.0.0
+No resources found in default namespace.
+[root@master k8sfile]# kubectl get po -l author!=rlw,test=1.0.0
+NAME         READY   STATUS    RESTARTS   AGE
+nginx-life   1/1     Running   0          16m
+[root@master k8sfile]# kubectl get po -l 'author!=rlw,test=1.0.0,type in (app,app2)'
+NAME         READY   STATUS    RESTARTS   AGE
+nginx-life   1/1     Running   0          17m
+```
+
+
+### Deployment
+
+
+
+
+
+
