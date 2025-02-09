@@ -1330,8 +1330,57 @@ nginx-life   1/1     Running   0          17m
 
 
 ### Deployment
+#### 功能
 
+##### 创建
+```
+[root@master deployments]# kubectl create deploy nginx-deploy --image=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+deployment.apps/nginx-deploy created
 
+[root@master deployments]# kubectl get deploy
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   1/1     1            1           4m36s
+[root@master deployments]# kubectl get rs
+NAME                      DESIRED   CURRENT   READY   AGE
+nginx-deploy-7c94c74f9d   1         1         1       4m41s
+[root@master deployments]# kubectl get po
+NAME                            READY   STATUS    RESTARTS   AGE
+nginx-deploy-7c94c74f9d-sd2qn   1/1     Running   0          4m44s
+
+#提示->从pod名称可以看出关联关系
+```
+
+```
+apiVersion: apps/v1 # deployment api 版本
+kind: Deployment # 资源类型为 deployment
+metadata: # 元信息
+  labels: # 标签
+    app: nginx-deploy # 具体的 key: value 配置形式
+  name: nginx-deploy # deployment 的名字
+  namespace: default # 所在的命名空间
+spec:
+  replicas: 1 # 期望副本数
+  revisionHistoryLimit: 10 # 进行滚动更新后，保留的历史版本数
+  selector: # 选择器，用于找到匹配的 RS
+    matchLabels: # 按照标签匹配
+      app: nginx-deploy # 匹配的标签key/value
+  strategy: # 更新策略
+    rollingUpdate: # 滚动更新配置
+      maxSurge: 25% # 进行滚动更新时，更新的个数最多可以超过期望副本数的个数/比例
+      maxUnavailable: 25% # 进行滚动更新时，最大不可用比例更新比例，表示在所有副本数中，最多可以有多少个不更新成功
+    type: RollingUpdate # 更新类型，采用滚动更新
+  template: # pod 模板
+    metadata: # pod 的元信息
+      labels: # pod 的标签
+        app: nginx-deploy
+    spec: # pod 期望信息
+      containers: # pod 的容器
+      - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest # 镜像
+        imagePullPolicy: IfNotPresent # 拉取策略
+        name: nginx # 容器名称
+      restartPolicy: Always # 重启策略
+      terminationGracePeriodSeconds: 30 # 删除操作最多宽限多长时间
+```
 
 
 
