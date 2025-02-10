@@ -1382,6 +1382,157 @@ spec:
       terminationGracePeriodSeconds: 30 # 删除操作最多宽限多长时间
 ```
 
+##### 滚动更新(只有修改了 deployment 配置文件中的 template 中的属性后，才会触发更新操作)
+```
+修改 nginx 版本号
+kubectl set image deployment/nginx-deployment nginx=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:1.9.1
 
+或者通过 kubectl edit deployment/nginx-deployment 进行修改
+
+查看滚动更新的过程
+kubectl rollout status deploy <deployment_name>
+
+查看部署描述，最后展示发生的事件列表也可以看到滚动更新过程
+kubectl describe deploy <deployment_name>
+
+通过 kubectl get deployments 获取部署信息，UP-TO-DATE 表示已经有多少副本达到了配置中要求的数目
+
+通过 kubectl get rs 可以看到增加了一个新的 rs
+
+通过 kubectl get pods 可以看到所有 pod 关联的 rs 变成了新的
+
+
+假设当前有 5 个 nginx:1.7.9 版本，你想将版本更新为 1.9.1，当更新成功第三个以后，你马上又将期望更新的版本改为 1.9.2，那么此时会立马删除之前的三个，并且立马开启更新 1.9.2 的任务
+
+
+----------------------------------------------------------------------------------------------------------
+
+[root@master deployments]# kubectl get deploy --show-labels
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE     LABELS
+nginx-deploy   2/2     2            2           4m36s   app=nginx-deploy
+[root@master deployments]# kubectl get rs --show-labels
+NAME                      DESIRED   CURRENT   READY   AGE     LABELS
+nginx-deploy-548f464cb4   0         0         0       4m42s   app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-9f498cf54    2         2         2       37s     app=nginx-deploy,pod-template-hash=9f498cf54
+[root@master deployments]# kubectl get pod --show-labels
+NAME                           READY   STATUS    RESTARTS   AGE   LABELS
+nginx-deploy-9f498cf54-mpff9   1/1     Running   0          48s   app=nginx-deploy,pod-template-hash=9f498cf54
+nginx-deploy-9f498cf54-r65mg   1/1     Running   0          50s   app=nginx-deploy,pod-template-hash=9f498cf54
+[root@master deployments]# 
+```
+
+
+
+##### 回滚（有时候你可能想回退一个Deployment，例如，当Deployment不稳定时，比如一直crash looping。）
+
+```
+[root@master deployments]# kubectl rollout history deploy nginx-deploy
+deployment.apps/nginx-deploy 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         <none>
+
+[root@master deployments]# kubectl rollout history deploy nginx-deploy --revision=1
+deployment.apps/nginx-deploy with revision #1
+Pod Template:
+  Labels:       app=nginx-deploy
+        pod-template-hash=548f464cb4
+  Containers:
+   nginx:
+    Image:      swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+    Port:       <none>
+    Host Port:  <none>
+    Environment:        <none>
+    Mounts:     <none>
+  Volumes:      <none>
+
+[root@master deployments]# ^C
+[root@master deployments]# kubectl rollout undo deploy nginx-deploy --to-revisioon=1
+error: unknown flag: --to-revisioon
+See 'kubectl rollout undo --help' for usage.
+[root@master deployments]# kubectl rollout undo deploy nginx-deploy --to-revision=1
+deployment.apps/nginx-deploy rolled back
+[root@master deployments]# kubectl get deploy --show-labels
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE   LABELS
+nginx-deploy   2/2     2            2           15m   app=nginx-deploy
+[root@master deployments]# kubectl get rs --show-labels
+NAME                      DESIRED   CURRENT   READY   AGE   LABELS
+nginx-deploy-548f464cb4   2         2         2       15m   app=nginx-deploy,pod-template-hash=548f464cb4 #现在是这个reday
+nginx-deploy-9f498cf54    0         0         0       11m   app=nginx-deploy,pod-template-hash=9f498cf54  #原本是这个reday
+[root@master deployments]# kubectl get po --show-labels
+NAME                            READY   STATUS    RESTARTS   AGE   LABELS
+nginx-deploy-548f464cb4-gswlv   1/1     Running   0          44s   app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-548f464cb4-qcn66   1/1     Running   0          42s   app=nginx-deploy,pod-template-hash=548f464cb4
+[root@master deployments]# 
+```
+
+##### 扩容缩容 (通过 kube scale 命令可以进行自动扩容/缩容，以及通过 kube edit 编辑 replcas 也可以实现扩容/缩容)
+```
+[root@master deployments]# kubectl scale --replicas=6 deploy nginx-deploy
+deployment.apps/nginx-deploy scaled
+[root@master deployments]# kubectl get deploy --show-labels
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE   LABELS
+nginx-deploy   6/6     6            6           24m   app=nginx-deploy
+[root@master deployments]# kubectl get rs --show-labels
+NAME                      DESIRED   CURRENT   READY   AGE   LABELS
+nginx-deploy-548f464cb4   6         6         6       24m   app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-9f498cf54    0         0         0       20m   app=nginx-deploy,pod-template-hash=9f498cf54
+[root@master deployments]# kubectl get pod --show-labels
+NAME                            READY   STATUS    RESTARTS   AGE     LABELS
+nginx-deploy-548f464cb4-5rbc7   1/1     Running   0          31s     app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-548f464cb4-7grwj   1/1     Running   0          31s     app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-548f464cb4-8xwwn   1/1     Running   0          31s     app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-548f464cb4-gswlv   1/1     Running   0          9m29s   app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-548f464cb4-l8vzj   1/1     Running   0          31s     app=nginx-deploy,pod-template-hash=548f464cb4
+nginx-deploy-548f464cb4-qcn66   1/1     Running   0          9m27s   app=nginx-deploy,pod-template-hash=548f464cb4
+```
+##### 暂停与恢复（由于每次对 pod template 中的信息发生修改后，都会触发更新 deployment 操作，那么此时如果频繁修改信息，就会产生多次更新，而实际上只需要执行最后一次更新即可，当出现此类情况时我们就可以暂停 deployment 的 rollout通过 kubectl rollout pause deployment <name> 就可以实现暂停，直到你下次恢复后才会继续进行滚动更新）
+```
+[root@master deployments]# kubectl get deploy 
+\NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   6/6     6            6           30m
+[root@master deployments]# kubectl edit deploy nginx-deploy
+deployment.apps/nginx-deploy edited
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   5/6     3            5           31m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   5/6     6            5           31m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   5/6     6            5           31m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   6/6     6            6           31m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   6/6     6            6           31m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   6/6     6            6           31m
+[root@master deployments]# kubectl rollout pause deploy nginx-deploy
+deployment.apps/nginx-deploy paused
+[root@master deployments]# kubectl edit deploy nginx-deploy
+deployment.apps/nginx-deploy edited
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   6/6     0            6           32m
+[root@master deployments]# kubectl rollout resume deploy nginx-deploy
+deployment.apps/nginx-deploy resumed
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   5/6     3            5           33m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   5/6     6            5           33m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   7/6     6            7           33m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   6/6     6            6           33m
+[root@master deployments]#
+```
 
 
