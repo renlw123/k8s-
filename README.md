@@ -1330,9 +1330,8 @@ nginx-life   1/1     Running   0          17m
 
 
 ### Deployment
-#### 功能
 
-##### 创建
+#### 创建
 ```
 [root@master deployments]# kubectl create deploy nginx-deploy --image=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
 deployment.apps/nginx-deploy created
@@ -1382,7 +1381,7 @@ spec:
       terminationGracePeriodSeconds: 30 # 删除操作最多宽限多长时间
 ```
 
-##### 滚动更新(只有修改了 deployment 配置文件中的 template 中的属性后，才会触发更新操作)
+#### 滚动更新(只有修改了 deployment 配置文件中的 template 中的属性后，才会触发更新操作)
 ```
 修改 nginx 版本号
 kubectl set image deployment/nginx-deployment nginx=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:1.9.1
@@ -1423,7 +1422,7 @@ nginx-deploy-9f498cf54-r65mg   1/1     Running   0          50s   app=nginx-depl
 
 
 
-##### 回滚（有时候你可能想回退一个Deployment，例如，当Deployment不稳定时，比如一直crash looping。）
+#### 回滚（有时候你可能想回退一个Deployment，例如，当Deployment不稳定时，比如一直crash looping。）
 
 ```
 [root@master deployments]# kubectl rollout history deploy nginx-deploy
@@ -1466,7 +1465,7 @@ nginx-deploy-548f464cb4-qcn66   1/1     Running   0          42s   app=nginx-dep
 [root@master deployments]# 
 ```
 
-##### 扩容缩容 (通过 kube scale 命令可以进行自动扩容/缩容，以及通过 kube edit 编辑 replcas 也可以实现扩容/缩容)
+#### 扩容缩容 (通过 kube scale 命令可以进行自动扩容/缩容，以及通过 kube edit 编辑 replcas 也可以实现扩容/缩容)
 ```
 [root@master deployments]# kubectl scale --replicas=6 deploy nginx-deploy
 deployment.apps/nginx-deploy scaled
@@ -1486,7 +1485,7 @@ nginx-deploy-548f464cb4-gswlv   1/1     Running   0          9m29s   app=nginx-d
 nginx-deploy-548f464cb4-l8vzj   1/1     Running   0          31s     app=nginx-deploy,pod-template-hash=548f464cb4
 nginx-deploy-548f464cb4-qcn66   1/1     Running   0          9m27s   app=nginx-deploy,pod-template-hash=548f464cb4
 ```
-##### 暂停与恢复（由于每次对 pod template 中的信息发生修改后，都会触发更新 deployment 操作，那么此时如果频繁修改信息，就会产生多次更新，而实际上只需要执行最后一次更新即可，当出现此类情况时我们就可以暂停 deployment 的 rollout通过 kubectl rollout pause deployment <name> 就可以实现暂停，直到你下次恢复后才会继续进行滚动更新）
+#### 暂停与恢复（由于每次对 pod template 中的信息发生修改后，都会触发更新 deployment 操作，那么此时如果频繁修改信息，就会产生多次更新，而实际上只需要执行最后一次更新即可，当出现此类情况时我们就可以暂停 deployment 的 rollout通过 kubectl rollout pause deployment <name> 就可以实现暂停，直到你下次恢复后才会继续进行滚动更新）
 ```
 [root@master deployments]# kubectl get deploy 
 \NAME           READY   UP-TO-DATE   AVAILABLE   AGE
@@ -1535,4 +1534,217 @@ nginx-deploy   6/6     6            6           33m
 [root@master deployments]#
 ```
 
+### StatefulSet
+#### 创建
+```
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "nginx"
+  replicas: 2
+  selector: 
+    matchLabels: 
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+        ports:
+        - containerPort: 80
+          name: web
+        # volumeMounts:
+        # - name: www
+        #   mountPath: /usr/share/nginx/html
+  # volumeClaimTemplates:
+  # - metadata:
+  #     name: www
+  #     annotations:
+  #       volume.alpha.kubernetes.io/storage-class: anything
+  #   spec:
+  #     accessModes: [ "ReadWriteOnce" ]
+  #     resources:
+  #       requests:
+  #         storage: 1Gi
 
+```
+```
+[root@master statefulset]# kubectl apply -f web.yaml
+service/nginx created
+statefulset.apps/web created
+[root@master statefulset]# kubectl get sts
+NAME   READY   AGE
+web    1/2     3s
+[root@master statefulset]# kubectl get sts
+NAME   READY   AGE
+web    1/2     5s
+[root@master statefulset]# kubectl get sts
+NAME   READY   AGE
+web    2/2     6s
+[root@master statefulset]# kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   132d
+nginx        ClusterIP   None         <none>        80/TCP    8m42s
+[root@master statefulset]# kubectl get pod
+NAME    READY   STATUS    RESTARTS   AGE
+web-0   1/1     Running   0          119s
+web-1   1/1     Running   0          116s
+[root@master statefulset]# kubectl run -i --tty --image swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/busybox:1.28.4 dns-test --restart=Never --rm /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # nslookup web-0.nginx
+Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+
+Name:      web-0.nginx
+Address 1: 10.244.166.174 web-0.nginx.default.svc.cluster.local
+/ # pod "dns-test" deleted
+[root@master statefulset]# kubectl get pod -o wide
+NAME    READY   STATUS    RESTARTS   AGE   IP               NODE    NOMINATED NODE   READINESS GATES
+web-0   1/1     Running   0          16m   10.244.166.174   node1   <none>           <none>
+web-1   1/1     Running   0          16m   10.244.104.37    node2   <none>           <none>
+[root@master statefulset]# kubectl run -i --tty --image swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/busybox:1.28.4 dns-test --restart=Never --rm /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # nslookup web-1.nginx
+Server:    10.96.0.10
+Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
+
+Name:      web-1.nginx
+Address 1: 10.244.104.37 web-1.nginx.default.svc.cluster.local
+
+/ # ping web-0.nginx
+PING web-0.nginx (10.244.166.174): 56 data bytes
+64 bytes from 10.244.166.174: seq=0 ttl=62 time=0.313 ms
+64 bytes from 10.244.166.174: seq=1 ttl=62 time=1.002 ms
+```
+#### 扩容缩容
+```
+[root@master statefulset]# kubectl scale sts web --replicas=5
+statefulset.apps/web scaled
+[root@master statefulset]# kubectl get sts
+NAME   READY   AGE
+web    3/5     21m
+[root@master statefulset]# kubectl get sts
+NAME   READY   AGE
+web    4/5     21m
+[root@master statefulset]# kubectl patch sts web -p '{"spec":{"replicas":3}}'
+statefulset.apps/web patched
+[root@master statefulset]# kubectl get sts
+NAME   READY   AGE
+web    3/3     22m
+[root@master statefulset]#
+```
+#### 镜像更新
+#### 目前还不支持直接更新 image，需要 patch 来间接实现
+```
+[root@master statefulset]# kubectl patch sts web --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"nginx:自己版本号"}]'
+statefulset.apps/web patched
+[root@master statefulset]# kubectl get pod
+NAME    READY   STATUS              RESTARTS   AGE
+web-0   1/1     Running             0          79s
+web-1   0/1     ContainerCreating   0          2s
+```
+#### 灰度发布利用滚动更新中的 partition 属性，可以实现简易的灰度发布的效果例如我们有 5 个 pod，如果当前 partition 设置为 3，那么此时滚动更新时，只会更新那些 序号 >= 3 的 pod,利用该机制，我们可以通过控制 partition 的值，来决定只更新其中一部分 pod，确认没有问题后再主键增大更新的 pod 数量，最终实现全部 pod 更新
+```
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"annotations":{},"name":"web","namespace":"default"},"spec":{"replicas":2,"selector":{"matchLabels":{"app":"nginx"}},"serviceName":"nginx","template":{"metadata":{"labels":{"app":"nginx"}},"spec":{"containers":[{"image":"swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest","name":"nginx","ports":[{"containerPort":80,"name":"web"}]}]}}}}
+  creationTimestamp: "2025-02-11T13:42:05Z"
+  generation: 2
+  name: web
+  namespace: default
+  resourceVersion: "161867"
+  uid: f9ad1b4f-1043-4d73-80a3-dede720150df
+spec:
+  podManagementPolicy: OrderedReady
+  replicas: 5
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nginx
+  serviceName: nginx
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+        imagePullPolicy: Always
+        name: nginx
+        ports:
+        - containerPort: 80
+          name: web
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+  updateStrategy:
+    rollingUpdate:
+      partition: 4
+    type: RollingUpdate
+status:
+  availableReplicas: 5
+  collisionCount: 0
+  currentReplicas: 5
+  currentRevision: web-5458f7c8b7
+  observedGeneration: 2
+  readyReplicas: 5
+  replicas: 5
+  updateRevision: web-5458f7c8b7
+  updatedReplicas: 5
+```
+##### 将上述配置文件的partition 改为4，那么一共有5个pod，这时候edit会更新大于4的那个pod
+```
+updateStrategy:
+    rollingUpdate:
+      partition: 4
+    type: RollingUpdate
+```
+
+```
+[root@master statefulset]# kubectl get po
+NAME    READY   STATUS    RESTARTS   AGE
+web-0   1/1     Running   0          18m
+web-1   1/1     Running   0          18m
+web-2   1/1     Running   0          6m1s
+web-3   1/1     Running   0          5m59s
+web-4   1/1     Running   0          27s
+[root@master statefulset]# kubectl edit pod web-4
+Edit cancelled, no changes made.
+[root@master statefulset]# kubectl edit pod web-3
+Edit cancelled, no changes made.
+[root@master statefulset]#
+```
+##### web-4
+![image](https://github.com/user-attachments/assets/42428d05-fe32-4eb3-895c-a47a8b02e381)
+##### web-3
+![image](https://github.com/user-attachments/assets/2867815d-b11f-4da7-b0ed-88aad3011313)
