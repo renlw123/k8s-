@@ -1663,7 +1663,7 @@ NAME    READY   STATUS              RESTARTS   AGE
 web-0   1/1     Running             0          79s
 web-1   0/1     ContainerCreating   0          2s
 ```
-#### 灰度发布利用滚动更新中的 partition 属性，可以实现简易的灰度发布的效果例如我们有 5 个 pod，如果当前 partition 设置为 3，那么此时滚动更新时，只会更新那些 序号 >= 3 的 pod,利用该机制，我们可以通过控制 partition 的值，来决定只更新其中一部分 pod，确认没有问题后再主键增大更新的 pod 数量，最终实现全部 pod 更新
+#### 灰度发布（RollingUpdate）利用滚动更新中的 partition 属性，可以实现简易的灰度发布的效果例如我们有 5 个 pod，如果当前 partition 设置为 3，那么此时滚动更新时，只会更新那些 序号 >= 3 的 pod,利用该机制，我们可以通过控制 partition 的值，来决定只更新其中一部分 pod，确认没有问题后再主键增大更新的 pod 数量，最终实现全部 pod 更新
 ```
 apiVersion: apps/v1
 kind: StatefulSet
