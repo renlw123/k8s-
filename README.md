@@ -1844,6 +1844,9 @@ kind: DaemonSet # 创建 Daemonset资源控制
 metadata:
   name: fluentd #名称
 spec:
+  selector: 
+    matchLabels:
+      app: logging
   template:
     metadata:
       labels:
@@ -1851,9 +1854,11 @@ spec:
         id: fluentd
       name: fluentd
     spec:
+      nodeSelector: 
+        type: microservices
       containers:
       - name: fluentd-es
-        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/agilestacks/fluentd-elasticsearch:latest
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
         env: # 环境变量
          - name: FLUENTD_ARGS # 环境变量的key
            value: -qq # 环境变量的value
@@ -1869,7 +1874,108 @@ spec:
          - hostPath:
              path: /var/log
            name: varlog
-
-
-
 ```
+#### 指定node节点（DaemonSet 会忽略 Node 的 unschedulable 状态，有两种方式来指定 Pod 只运行在指定的 Node 节点上）
+
+##### nodeSelector（只调度到匹配指定 label 的 Node 上）
+```
+kubectl get no -o wide --show-labels
+NAME     STATUS   ROLES                  AGE    VERSION   INTERNAL-IP      EXTERNAL-IP   OS-IMAGE                KERNEL-VERSION           CONTAINER-RUNTIME   LABELS
+master   Ready    control-plane,master   133d   v1.23.6   192.168.30.161   <none>        CentOS Linux 7 (Core)   3.10.0-1160.el7.x86_64   docker://20.10.14   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=master,kubernetes.io/os=linux,node-role.kubernetes.io/control-plane=,node-role.kubernetes.io/master=,node.kubernetes.io/exclude-from-external-load-balancers=
+node1    Ready    <none>                 133d   v1.23.6   192.168.30.162   <none>        CentOS Linux 7 (Core)   3.10.0-1160.el7.x86_64   docker://20.10.14   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=node1,kubernetes.io/os=linux # 注意这里这时候没有标记type
+node2    Ready    <none>                 133d   v1.23.6   192.168.30.163   <none>        CentOS Linux 7 (Core)   3.10.0-1160.el7.x86_64   docker://20.10.14   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=node2,kubernetes.io/os=linux,type=microservices
+```
+```
+[root@master daemonset]# kubectl apply -f fluentd.yaml 
+daemonset.apps/fluentd created
+[root@master daemonset]# kubectl get ds
+NAME      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR        AGE
+fluentd   1         1         1       1            1           type=microservices   15s
+[root@master daemonset]# kubectl get pod  -o wide
+NAME            READY   STATUS    RESTARTS   AGE   IP              NODE    NOMINATED NODE   READINESS GATES
+fluentd-cwljg   1/1     Running   0          37s   10.244.104.20   node2   <none>           <none>
+```
+```
+[root@master daemonset]# kubectl label no node1 type=microservices --overwrite
+node/node1 labeled
+[root@master daemonset]# kubectl get po -o wide
+NAME            READY   STATUS    RESTARTS   AGE   IP               NODE    NOMINATED NODE   READINESS GATES
+fluentd-cwljg   1/1     Running   0          91s   10.244.104.20    node2   <none>           <none>
+fluentd-mt8fn   1/1     Running   0          12s   10.244.166.144   node1   <none>           <none>
+```
+
+一、查看ds配置文件kubectl edit ds name,需要注意的是这里也存在滚动更新，updateStrategy:rollingUpdate:maxSurge: 0maxUnavailable: 1type: RollingUpdate，如果需要把所有的节点都更新的话可以使用RollingUpdate，否则使用OnDelete
+```
+ apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations:
+    deprecated.daemonset.template.generation: "1"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"DaemonSet","metadata":{"annotations":{},"name":"fluentd","namespace":"default"},"spec":{"selector":{"matchLabels":{"app":"logging"}},"template":{"metadata":{"labels":{"app":"logging","id":"fluentd"},"name":"fluentd"},"spec":{"containers":[{"env":[{"name":"FLUENTD_ARGS","value":"-qq"}],"image":"swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest","name":"fluentd-es","volumeMounts":[{"mountPath":"/var/lib/docker/containers","name":"containers"},{"mountPath":"/varlog","name":"varlog"}]}],"nodeSelector":{"type":"microservices"},"volumes":[{"hostPath":{"path":"/var/lib/docker/containers"},"name":"containers"},{"hostPath":{"path":"/var/log"},"name":"varlog"}]}}}}
+  creationTimestamp: "2025-02-12T13:58:30Z"
+  generation: 1
+  name: fluentd
+  namespace: default
+  resourceVersion: "173358"
+  uid: b3b21f0c-40db-455e-b1ed-009a170a9208
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: logging
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: logging
+        id: fluentd
+      name: fluentd
+    spec:
+      containers:
+      - env:
+        - name: FLUENTD_ARGS
+          value: -qq
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+        imagePullPolicy: Always
+        name: fluentd-es
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/lib/docker/containers
+          name: containers
+        - mountPath: /varlog
+          name: varlog
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        type: microservices
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - hostPath:
+          path: /var/lib/docker/containers
+          type: ""
+        name: containers
+      - hostPath:
+          path: /var/log
+          type: ""
+        name: varlog
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+status:
+  currentNumberScheduled: 2
+  desiredNumberScheduled: 2
+  numberAvailable: 2
+  numberMisscheduled: 0
+  numberReady: 2
+  observedGeneration: 1
+  updatedNumberScheduled: 2
+```
+
+
