@@ -1654,7 +1654,7 @@ web    3/3     22m
 [root@master statefulset]#
 ```
 #### 镜像更新
-#### 目前还不支持直接更新 image，需要 patch 来间接实现
+##### 目前还不支持直接更新 image，需要 patch 来间接实现
 ```
 [root@master statefulset]# kubectl patch sts web --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"nginx:自己版本号"}]'
 statefulset.apps/web patched
@@ -1663,7 +1663,7 @@ NAME    READY   STATUS              RESTARTS   AGE
 web-0   1/1     Running             0          79s
 web-1   0/1     ContainerCreating   0          2s
 ```
-#### 灰度发布（RollingUpdate）利用滚动更新中的 partition 属性，可以实现简易的灰度发布的效果例如我们有 5 个 pod，如果当前 partition 设置为 3，那么此时滚动更新时，只会更新那些 序号 >= 3 的 pod,利用该机制，我们可以通过控制 partition 的值，来决定只更新其中一部分 pod，确认没有问题后再主键增大更新的 pod 数量，最终实现全部 pod 更新
+##### 灰度发布（RollingUpdate）利用滚动更新中的 partition 属性，可以实现简易的灰度发布的效果例如我们有 5 个 pod，如果当前 partition 设置为 3，那么此时滚动更新时，只会更新那些 序号 >= 3 的 pod,利用该机制，我们可以通过控制 partition 的值，来决定只更新其中一部分 pod，确认没有问题后再主键增大更新的 pod 数量，最终实现全部 pod 更新
 ```
 apiVersion: apps/v1
 kind: StatefulSet
@@ -1722,7 +1722,7 @@ status:
   updateRevision: web-5458f7c8b7
   updatedReplicas: 5
 ```
-##### 将上述配置文件的partition 改为4，那么一共有5个pod，这时候edit会更新大于4的那个pod
+一、 将上述配置文件的partition 改为4，那么一共有5个pod，这时候edit会更新大于4的那个pod
 ```
 updateStrategy:
     rollingUpdate:
@@ -1744,7 +1744,132 @@ Edit cancelled, no changes made.
 Edit cancelled, no changes made.
 [root@master statefulset]#
 ```
-##### web-4
+1. web-4
 ![image](https://github.com/user-attachments/assets/42428d05-fe32-4eb3-895c-a47a8b02e381)
-##### web-3
+2. web-3
 ![image](https://github.com/user-attachments/assets/2867815d-b11f-4da7-b0ed-88aad3011313)
+
+##### OnDelete(只有在 pod 被删除时会进行更新操作)
+```
+# 以上省略
+spec:
+  podManagementPolicy: OrderedReady
+  replicas: 5
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nginx
+  serviceName: nginx
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+        imagePullPolicy: Always
+        name: nginx2
+        ports:
+        - containerPort: 80
+          name: web
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+  updateStrategy:
+    type: OnDelete
+```
+```
+[root@master statefulset]# kubectl get po
+NAME    READY   STATUS    RESTARTS        AGE
+web-0   1/1     Running   1 (9m38s ago)   22h
+web-1   1/1     Running   1 (9m33s ago)   22h
+web-2   1/1     Running   1 (9m38s ago)   22h
+web-3   1/1     Running   1 (9m33s ago)   22h
+web-4   1/1     Running   1 (9m33s ago)   22h
+[root@master statefulset]# kubectl delete pod web-4
+pod "web-4" deleted
+^[[A[root@master statefulset]# kubectl get po
+NAME    READY   STATUS              RESTARTS        AGE
+web-0   1/1     Running             1 (9m48s ago)   22h
+web-1   1/1     Running             1 (9m43s ago)   22h
+web-2   1/1     Running             1 (9m48s ago)   22h
+web-3   1/1     Running             1 (9m43s ago)   22h
+web-4   0/1     ContainerCreating   0               1s
+[root@master statefulset]# kubectl get po
+NAME    READY   STATUS    RESTARTS        AGE
+web-0   1/1     Running   1 (9m51s ago)   22h
+web-1   1/1     Running   1 (9m46s ago)   22h
+web-2   1/1     Running   1 (9m51s ago)   22h
+web-3   1/1     Running   1 (9m46s ago)   22h
+web-4   1/1     Running   0               4s
+```
+
+
+#### 删除（有状态服务删除有级联删除->删除sts->删除pod | 与不级联删除->删除sts->不会删除pod）
+```
+[root@master statefulset]# kubectl delete sts web --cascade=false
+warning: --cascade=false is deprecated (boolean value) and can be replaced with --cascade=orphan.
+statefulset.apps "web" deleted
+[root@master statefulset]# kubectl get pod
+NAME    READY   STATUS    RESTARTS      AGE
+web-0   1/1     Running   1 (19m ago)   22h
+web-1   1/1     Running   1 (19m ago)   22h
+web-2   1/1     Running   1 (19m ago)   22h
+web-3   1/1     Running   1 (19m ago)   22h
+web-4   1/1     Running   0             9m25s
+[root@master statefulset]# kubectl get pod --show-labels
+NAME    READY   STATUS    RESTARTS      AGE     LABELS
+web-0   1/1     Running   1 (19m ago)   22h     app=nginx,controller-revision-hash=web-5458f7c8b7,statefulset.kubernetes.io/pod-name=web-0
+web-1   1/1     Running   1 (19m ago)   22h     app=nginx,controller-revision-hash=web-5458f7c8b7,statefulset.kubernetes.io/pod-name=web-1
+web-2   1/1     Running   1 (19m ago)   22h     app=nginx,controller-revision-hash=web-5458f7c8b7,statefulset.kubernetes.io/pod-name=web-2
+web-3   1/1     Running   1 (19m ago)   22h     app=nginx,controller-revision-hash=web-5458f7c8b7,statefulset.kubernetes.io/pod-name=web-3
+web-4   1/1     Running   0             9m38s   app=nginx,controller-revision-hash=web-84496dd4dc,statefulset.kubernetes.io/pod-name=web-4
+[root@master statefulset]# 
+```
+
+
+### DaemonSet(用于确保集群中的每个（或部分）节点都运行一个特定的 Pod。它适用于需要在所有节点上运行的后台任务或守护进程，创建一个daemonset会为所有相关节点创建pod，如果有新加入的节点，也会为其创建相同pod)
+
+#### 配置文件
+```
+apiVersion: apps/v1
+kind: DaemonSet # 创建 Daemonset资源控制
+metadata:
+  name: fluentd #名称
+spec:
+  template:
+    metadata:
+      labels:
+        app: logging
+        id: fluentd
+      name: fluentd
+    spec:
+      containers:
+      - name: fluentd-es
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/agilestacks/fluentd-elasticsearch:latest
+        env: # 环境变量
+         - name: FLUENTD_ARGS # 环境变量的key
+           value: -qq # 环境变量的value
+        volumeMounts: # 加载数据卷，避免数据丢失
+         - name: containers # 数据卷名称
+           mountPath: /var/lib/docker/containers # 将数据卷挂载到容器内的哪个目录
+         - name: varlog
+           mountPath: /varlog
+      volumes: # 定义数据卷
+         - hostPath: # 数据卷类型，主机路径的模式，也就是与node共享目录
+             path: /var/lib/docker/containers # node中的共享目录
+           name: containers # 定义的数据卷名称
+         - hostPath:
+             path: /var/log
+           name: varlog
+
+
+
+```
