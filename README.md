@@ -2312,6 +2312,17 @@ nginx-deploy   Deployment/nginx-deploy   33%/20%   3         5         5        
 NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
 nginx-deploy   Deployment/nginx-deploy   33%/20%   3         5         5          12m
 
+
+[root@master deployments]# kubectl get deploy
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   5/5     5            5           17m
+[root@master deployments]# kubectl get pod
+NAME                            READY   STATUS    RESTARTS   AGE
+nginx-deploy-788875c698-9fqcx   1/1     Running   0          8m28s
+nginx-deploy-788875c698-h5kjx   1/1     Running   0          17m
+nginx-deploy-788875c698-r9tx5   1/1     Running   0          17m
+nginx-deploy-788875c698-v28g7   1/1     Running   0          17m
+nginx-deploy-788875c698-w5g7z   1/1     Running   0          4m58s
 [root@master deployments]# kubectl get  pods -o wide
 NAME                            READY   STATUS    RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
 nginx-deploy-788875c698-9fqcx   1/1     Running   0          4m41s   10.244.166.154   node1   <none>           <none>
@@ -2350,6 +2361,18 @@ nginx-deploy   Deployment/nginx-deploy   0%/20%    3         5         5        
 [root@master deployments]# kubectl get hpa
 NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
 nginx-deploy   Deployment/nginx-deploy   0%/20%    3         5         3          14m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   0%/20%    3         5         3          19m
+[root@master deployments]# kubectl get deploy 
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   3/3     3            3           20m
+[root@master deployments]# kubectl get pod
+NAME                            READY   STATUS    RESTARTS   AGE
+nginx-deploy-788875c698-9fqcx   1/1     Running   0          11m
+nginx-deploy-788875c698-r9tx5   1/1     Running   0          20m
+nginx-deploy-788875c698-v28g7   1/1     Running   0          20m
+[root@master deployments]#
 ```
 
 
