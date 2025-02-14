@@ -1906,7 +1906,7 @@ fluentd-mt8fn   1/1     Running   0          12s   10.244.166.144   node1   <non
 
 一、查看ds配置文件kubectl edit ds name,需要注意的是这里也存在滚动更新，updateStrategy:rollingUpdate:maxSurge: 0maxUnavailable: 1type: RollingUpdate，如果需要把所有的节点都更新的话可以使用RollingUpdate，否则使用OnDelete
 ```
- apiVersion: apps/v1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   annotations:
@@ -1977,5 +1977,384 @@ status:
   observedGeneration: 1
   updatedNumberScheduled: 2
 ```
+
+### HPA自动扩容缩容（通过观察 pod 的 cpu、内存使用率或自定义 metrics 指标进行自动的扩容或缩容 pod 的数量。通常用于 Deployment，不适用于无法扩/缩容的对象，如 DaemonSet控制管理器每隔30s（可以通过–horizontal-pod-autoscaler-sync-period修改）查询metrics的资源使用情况）
+#### 配置文件
+```
+apiVersion: apps/v1 # deployment api 版本
+kind: Deployment # 资源类型为 deployment
+metadata: # 元信息
+  labels: # 标签
+    app: nginx-deploy # 具体的 key: value 配置形式
+  name: nginx-deploy # deployment 的名字
+  namespace: default # 所在的命名空间
+spec:
+  replicas: 2 # 期望副本数
+  revisionHistoryLimit: 10 # 进行滚动更新后，保留的历史版本数
+  selector: # 选择器，用于找到匹配的 RS
+    matchLabels: # 按照标签匹配
+      app: nginx-deploy # 匹配的标签key/value
+  strategy: # 更新策略
+    rollingUpdate: # 滚动更新配置
+      maxSurge: 25% # 进行滚动更新时，更新的个数最多可以超过期望副本数的个数/比例
+      maxUnavailable: 25% # 进行滚动更新时，最大不可用比例更新比例，表示在所有副本数中，最多可以有多少个不更新成功
+    type: RollingUpdate # 更新类型，采用滚动更新
+  template: # pod 模板
+    metadata: # pod 的元信息
+      labels: # pod 的标签
+        app: nginx-deploy
+    spec: # pod 期望信息
+      containers: # pod 的容器
+      - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest # 镜像
+        imagePullPolicy: IfNotPresent # 拉取策略
+        name: nginx # 容器名称
+        resources: 
+          limits: 
+            cpu: 200m
+            memory: 128Mi
+          requests: 
+            cpu: 100m
+            memory: 128Mi
+      restartPolicy: Always # 重启策略
+      terminationGracePeriodSeconds: 30 # 删除操作最多宽限多长时间
+```
+```
+# 修改已存在的deployment然后replace yaml
+[root@master deployments]# kubectl replace -f nginx-deploy.yaml
+deployment.apps/nginx-deploy replaced
+[root@master deployments]# 
+```
+#### 开启指标监控服务-metrics-server:v0.7.2集群的资源监控工具，主要用于收集和聚合集群中各个节点和容器的资源使用情况（如 CPU、内存等），并提供这些信息给 Kubernetes API 服务器。它是 Kubernetes 集群的一个核心监控组件，通常用于自动扩容、水平扩展和诊断问题。具体功能包括：资源监控：提供集群各节点和容器的 CPU 和内存使用数据。API 支持：通过 Kubernetes Metrics API 接口提供实时监控数据，供 Horizontal Pod Autoscaler（HPA）等资源自动扩展机制使用。集成支持：支持与 Kubernetes Dashboard、Prometheus 等工具的集成，增强对集群资源的可视化和监控。
+
+#### metrics-server yaml配置文件
+```
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    k8s-app: metrics-server
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+  name: system:aggregated-metrics-reader
+rules:
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: system:metrics-server
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes/metrics
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: system:metrics-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:metrics-server
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server
+  namespace: kube-system
+spec:
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  selector:
+    k8s-app: metrics-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: metrics-server
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: metrics-server
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        k8s-app: metrics-server
+    spec:
+      containers:
+      - args:
+        - --cert-dir=/tmp
+        - --secure-port=10250
+        - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+        - --kubelet-use-node-status-port
+        - --metric-resolution=15s
+        - --kubelet-insecure-tls
+        image: registry.cn-hangzhou.aliyuncs.com/google_containers/metrics-server:v0.7.2
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+          periodSeconds: 10
+        name: metrics-server
+        ports:
+        - containerPort: 10250
+          name: https
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp-dir
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-cluster-critical
+      serviceAccountName: metrics-server
+      volumes:
+      - emptyDir: {}
+        name: tmp-dir
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  labels:
+    k8s-app: metrics-server
+  name: v1beta1.metrics.k8s.io
+spec:
+  group: metrics.k8s.io
+  groupPriorityMinimum: 100
+  insecureSkipTLSVerify: true
+  service:
+    name: metrics-server
+    namespace: kube-system
+  version: v1beta1
+  versionPriority: 100
+```
+#### 添加HPA
+```
+[root@master deployments]# kubectl apply -f service.yaml 
+[root@master deployments]# kubectl top pods # 测试metrics-server
+NAME                            CPU(cores)   MEMORY(bytes)   
+nginx-deploy-788875c698-g9t2n   0m           3Mi             
+nginx-deploy-788875c698-tjr7k   0m           3Mi             
+nginx-deploy-788875c698-tzk5j   0m           3Mi  
+[root@master deployments]# kubectl autoscale deploy nginx-deploy --cpu-percent=20 --min=3 --max=5 # cpu打到百分之二十，最少三个pod最多五个
+horizontalpodautoscaler.autoscaling/nginx-deploy autoscaled
+[root@master deployments]# kubectl get deploy
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   2/2     2            2           14m
+[root@master deployments]# kubectl get deploy
+NAME           READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deploy   3/3     3            3           14m
+```
+
+#### 创建nginx-deploy的service
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-svc
+  labels:
+    app: nginx
+  
+spec:
+  selector: 
+    app: nginx-deploy
+  ports:
+  - port: 80
+    targetPort: 80
+    name: web
+  type: NodePort
+```
+
+```
+[root@master deployments]# kubectl apply -f service.yaml 
+service/nginx-svc created
+[root@master deployments]# kubectl get svc
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP        135d
+nginx-svc    NodePort    10.97.41.167   <none>        80:31952/TCP   5s
+```
+#### 测试扩容
+```
+### node1下访问servier
+[root@master deployments]# kubectl get svc
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP        135d
+nginx-svc    NodePort    10.97.41.167   <none>        80:31952/TCP   4m51s
+
+[root@node1 ~]# while true; do wget -q -O- 10.97.41.167  > /dev/null ; done
+^C
+```
+
+#### 结果
+```
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   20%/20%   3         5         4          11m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   20%/20%   3         5         4          11m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   23%/20%   3         5         4          11m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   23%/20%   3         5         4          11m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   23%/20%   3         5         4          11m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   33%/20%   3         5         5          12m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   33%/20%   3         5         5          12m
+
+[root@master deployments]# kubectl get  pods -o wide
+NAME                            READY   STATUS    RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+nginx-deploy-788875c698-9fqcx   1/1     Running   0          4m41s   10.244.166.154   node1   <none>           <none>
+nginx-deploy-788875c698-h5kjx   1/1     Running   0          13m     10.244.104.27    node2   <none>           <none>
+nginx-deploy-788875c698-r9tx5   1/1     Running   0          13m     10.244.166.151   node1   <none>           <none>
+nginx-deploy-788875c698-v28g7   1/1     Running   0          13m     10.244.104.26    node2   <none>           <none>
+nginx-deploy-788875c698-w5g7z   1/1     Running   0          71s     10.244.104.30    node2   <none>           <none>
+[root@master deployments]# kubectl top pods
+NAME                            CPU(cores)   MEMORY(bytes)   
+nginx-deploy-788875c698-9fqcx   36m          3Mi             
+nginx-deploy-788875c698-h5kjx   21m          3Mi             
+nginx-deploy-788875c698-r9tx5   38m          3Mi             
+nginx-deploy-788875c698-v28g7   21m          3Mi             
+nginx-deploy-788875c698-w5g7z   21m          3Mi
+
+
+```
+#### 测试缩容
+```
+# 停止压力测试后
+[root@master deployments]# kubectl top pods
+NAME                            CPU(cores)   MEMORY(bytes)   
+nginx-deploy-788875c698-9fqcx   0m           3Mi             
+nginx-deploy-788875c698-h5kjx   0m           3Mi             
+nginx-deploy-788875c698-r9tx5   0m           3Mi             
+nginx-deploy-788875c698-v28g7   0m           3Mi             
+nginx-deploy-788875c698-w5g7z   0m           3Mi
+
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   0%/20%    3         5         5          14m
+
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   0%/20%    3         5         5          14m
+[root@master deployments]# kubectl get hpa
+NAME           REFERENCE                 TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+nginx-deploy   Deployment/nginx-deploy   0%/20%    3         5         3          14m
+```
+
+
+
+
+
 
 
