@@ -2378,6 +2378,41 @@ nginx-deploy-788875c698-v28g7   1/1     Running   0          20m
 
 
 
+## 服务发布
+### Service（负责东西流量（同层级/内部服务网络通信）的通信）
+![image](https://github.com/user-attachments/assets/51e1b8d7-b1d8-4484-bd46-7dccd9e358f8)
+
+### 步骤说明
+#### 第一步 （Deployment 是管理应用的容器副本集（Pod）的一种方式。它定义了应用容器的模板，并指定了副本数（Pod 数量），并确保所需数量的 Pod 在任何时候都在运行。在 Deployment 中，你会给 Pod 配置一些 标签（Labels）。）
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+```
+#### 第二步 （Service 会根据选择器（selector）来定位与之关联的 Pod。它通常会使用 标签选择器（Label Selector） 来选择 Deployment 创建的 Pod）
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-service
+spec:
+  selector:
+    app: my-app
+  ports:
+    - port: 80
+      targetPort: 8080
+```
+#### 第三步 （Endpoints：Service 通过标签选择器匹配到与之关联的 Pod 后，Kubernetes 会自动为 Service 创建相应的 Endpoints。Endpoints 是一个资源，它保存着符合 Service 标签选择器的 Pod 的 IP 地址和端口。例如，Service my-app-service 会将请求转发到所有标签为 app: my-app 的 Pod）
 
 
 
