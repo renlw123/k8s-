@@ -2402,15 +2402,17 @@ spec:
 #### 第二步 （Service 会根据选择器（selector）来定位与之关联的 Pod。它通常会使用 标签选择器（Label Selector） 来选择 Deployment 创建的 Pod）
 ```
 apiVersion: v1
-kind: Service
+kind: Service # 资源类型为Service
 metadata:
-  name: my-app-service
+  name: my-app-service # service名称
 spec:
   selector:
-    app: my-app
+    app: my-app # 匹配哪些pod会被改service代理
   ports:
-    - port: 80
-      targetPort: 8080
+    - port: 80 # service自己的端口，在内网ip访问使用
+      targetPort: 8080 # 目标pod的端口
+  name: web # 为端口起个名字
+type: NodePort # 随机启动一个端口30000-32767.映射到ports中的端口，该端口是直接绑定在node上的，且集群中的每一个node都会绑定这个端口， 也可以用于将服务暴露给外部访问，但是不推荐生成环境使用
 ```
 #### 第三步 （Endpoints：Service 通过标签选择器匹配到与之关联的 Pod 后，Kubernetes 会自动为 Service 创建相应的 Endpoints。Endpoints 是一个资源，它保存着符合 Service 标签选择器的 Pod 的 IP 地址和端口。例如，Service my-app-service 会将请求转发到所有标签为 app: my-app 的 Pod）
 
