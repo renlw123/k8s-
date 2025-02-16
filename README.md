@@ -2382,8 +2382,8 @@ nginx-deploy-788875c698-v28g7   1/1     Running   0          20m
 ### Service（负责东西流量（同层级/内部服务网络通信）的通信）
 ![image](https://github.com/user-attachments/assets/51e1b8d7-b1d8-4484-bd46-7dccd9e358f8)
 
-### 步骤说明
-#### 第一步 （Deployment 是管理应用的容器副本集（Pod）的一种方式。它定义了应用容器的模板，并指定了副本数（Pod 数量），并确保所需数量的 Pod 在任何时候都在运行。在 Deployment 中，你会给 Pod 配置一些 标签（Labels）。）
+#### 步骤说明
+##### 第一步 （Deployment 是管理应用的容器副本集（Pod）的一种方式。它定义了应用容器的模板，并指定了副本数（Pod 数量），并确保所需数量的 Pod 在任何时候都在运行。在 Deployment 中，你会给 Pod 配置一些 标签（Labels）。）
 ```
 apiVersion: apps/v1
 kind: Deployment
@@ -2399,7 +2399,7 @@ spec:
       labels:
         app: my-app
 ```
-#### 第二步 （Service 会根据选择器（selector）来定位与之关联的 Pod。它通常会使用 标签选择器（Label Selector） 来选择 Deployment 创建的 Pod）
+##### 第二步 （Service 会根据选择器（selector）来定位与之关联的 Pod。它通常会使用 标签选择器（Label Selector） 来选择 Deployment 创建的 Pod）
 ```
 apiVersion: v1
 kind: Service # 资源类型为Service
@@ -2414,7 +2414,179 @@ spec:
   name: web # 为端口起个名字
 type: NodePort # 随机启动一个端口30000-32767.映射到ports中的端口，该端口是直接绑定在node上的，且集群中的每一个node都会绑定这个端口， 也可以用于将服务暴露给外部访问，但是不推荐生成环境使用
 ```
-#### 第三步 （Endpoints：Service 通过标签选择器匹配到与之关联的 Pod 后，Kubernetes 会自动为 Service 创建相应的 Endpoints。Endpoints 是一个资源，它保存着符合 Service 标签选择器的 Pod 的 IP 地址和端口。例如，Service my-app-service 会将请求转发到所有标签为 app: my-app 的 Pod）
+##### 第三步 （Endpoints：Service 通过标签选择器匹配到与之关联的 Pod 后，Kubernetes 会自动为 Service 创建相应的 Endpoints。Endpoints 是一个资源，它保存着符合 Service 标签选择器的 Pod 的 IP 地址和端口。例如，Service my-app-service 会将请求转发到所有标签为 app: my-app 的 Pod）
+
+#### 操作service(集群内布)
+```
+[root@node1 ~]# kubectl describe svc nginx-svc
+Name:                     nginx-svc
+Namespace:                default
+Labels:                   app=nginx
+Annotations:              <none>
+Selector:                 app=nginx-deploy
+Type:                     NodePort
+IP Family Policy:         SingleStack
+IP Families:              IPv4
+IP:                       10.97.41.167
+IPs:                      10.97.41.167
+Port:                     web  80/TCP
+TargetPort:               80/TCP
+NodePort:                 web  31952/TCP
+Endpoints:                10.244.104.28:80,10.244.104.29:80,10.244.104.31:80
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+[root@node1 ~]#
+```
+```
+kubectl exec -it nginx-deploy-788875c698-4scf4 -- sh
+
+# 通过svc名称访问
+# curl http://nginx-svc
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+# 跨命名空间访问
+# curl http://nginx-svc.default
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+```
+
+#### 代理k8s集群外部服务
+```
+apiVersion: v1
+kind: Service 
+metadata:
+  name: nginx-svc-external
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+    name: web
+  type: ClusterIP
+```
+```
+[root@master service]# kubectl apply -f service.yaml 
+service/nginx-svc-external created
+[root@master service]# kubectl get svc
+NAME                 TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+kubernetes           ClusterIP   10.96.0.1       <none>        443/TCP        137d
+nginx-svc            NodePort    10.97.41.167    <none>        80:31952/TCP   44h
+nginx-svc-external   ClusterIP   10.105.133.94   <none>        80/TCP         4s
+[root@master service]# kubectl get ep
+NAME         ENDPOINTS                                            AGE
+kubernetes   192.168.30.161:6443                                  137d
+nginx-svc    10.244.104.28:80,10.244.104.29:80,10.244.104.31:80   44h
+```
+##### 手动创建ep
+```
+apiVersion: v1
+kind: Endpoints
+metadata:
+  labels:
+    app: nginx # 与 service 一致
+  name: nginx-svc-external # 与 service 一致
+  namespace: default # 与 service 一致
+subsets:
+- addresses:
+  - ip: 120.78.159.117 # 目标 ip 地址
+  ports: # 与 service 一致
+  - name: web
+    port: 80
+    protocol: TCP
+```
+```
+[root@master service]# kubectl apply -f service.yaml 
+service/nginx-svc-external created
+[root@master service]# kubectl get svc
+NAME                 TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+kubernetes           ClusterIP   10.96.0.1        <none>        443/TCP        137d
+nginx-svc            NodePort    10.97.41.167     <none>        80:31952/TCP   45h
+nginx-svc-external   ClusterIP   10.109.128.238   <none>        80/TCP         3s
+[root@master service]# kubectl apply -f nginx-ep.yaml
+
+[root@master service]# kubectl exec -it nginx-deploy-788875c698-4scf4 -- sh
+# curl http://nginx-svc-external
+<html>
+<head><title>301 Moved Permanently</title></head>
+<body bgcolor="white">
+<center><h1>301 Moved Permanently</h1></center>
+<hr><center>nginx/1.8.1</center>
+</body>
+</html>
+ 
+```
+
+#### 常用类型
+# Kubernetes 中 Service 的常用类型及使用场景
+
+在 Kubernetes 中，**Service** 是一种重要的资源，用于将一组 Pod 暴露为网络服务。Kubernetes 提供了不同类型的 **Service**，每种类型适用于不同的需求。下面是常用的 **Service** 类型及其使用场景。
+
+| **Service 类型**    | **访问范围**                           | **使用场景**                                                       | **示例** |
+|---------------------|----------------------------------------|--------------------------------------------------------------------|----------|
+| **ClusterIP**       | 仅集群内部可访问                       | - 集群内部的微服务通信<br>- 数据库、缓存等不需要外部访问的服务   | ```yaml<br>apiVersion: v1<br>kind: Service<br>metadata:<br>  name: my-service<br>spec:<br>  selector:<br>    app: my-app<br>  ports:<br>    - port: 80<br>      targetPort: 8080``` |
+| **NodePort**        | 通过集群节点的 IP 和端口访问           | - 开发/测试环境<br>- 简易暴露服务给外部访问，不需要负载均衡的场景 | ```yaml<br>apiVersion: v1<br>kind: Service<br>metadata:<br>  name: my-service<br>spec:<br>  selector:<br>    app: my-app<br>  ports:<br>    - port: 80<br>      targetPort: 8080<br>      nodePort: 30001<br>  type: NodePort``` |
+| **LoadBalancer**    | 外部可访问，自动创建外部负载均衡器     | - 需要高可用、外部访问的服务<br>- 适合生产环境，尤其是大规模流量的服务 | ```yaml<br>apiVersion: v1<br>kind: Service<br>metadata:<br>  name: my-service<br>spec:<br>  selector:<br>    app: my-app<br>  ports:<br>    - port: 80<br>      targetPort: 8080<br>  type: LoadBalancer``` |
+| **ExternalName**    | 外部 DNS 服务，流量转发到外部服务      | - 访问集群外的服务（如外部数据库、第三方 API）                     | ```yaml<br>apiVersion: v1<br>kind: Service<br>metadata:<br>  name: my-external-service<br>spec:<br>  type: ExternalName<br>  externalName: example.com``` |
+
+## 说明
+
+1. **ClusterIP**（默认类型）:
+   - 该类型的服务只能在集群内部访问，适用于需要集群内部通信的服务，如数据库、缓存服务等。
+
+2. **NodePort**:
+   - 该类型会在每个节点上开放一个相同的端口，适用于开发、测试环境或者简单的外部访问需求。
+
+3. **LoadBalancer**:
+   - 该类型的服务会为你自动创建一个外部负载均衡器，适用于需要从外部访问并且需要负载均衡的服务，通常用于生产环境。
+
+4. **ExternalName**:
+   - 该类型的服务会将请求转发到指定的外部 DNS 名称，适用于需要访问集群外部服务的场景。
+
+---
 
 
 
