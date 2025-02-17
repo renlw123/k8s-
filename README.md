@@ -2586,3 +2586,219 @@ nginx-svc-external   ClusterIP   10.109.128.238   <none>        80/TCP         3
 
 
 
+### Ingress（Ingress 大家可以理解为也是一种 LB 的抽象，它的实现也是支持 nginx、haproxy 等负载均衡服务的）
+![image](https://github.com/user-attachments/assets/27ba5495-9b1d-4177-8824-10298335a701)
+#### 安装安装 ingress-nginx,还可以安装其他的
+```
+AKS 应用程序网关 Ingress 控制器 是一个配置 Azure 应用程序网关 的 Ingress 控制器。
+阿里云 MSE Ingress 是一个 Ingress 控制器，它负责配置阿里云原生网关， 也是 Higress 的商业版本。
+Apache APISIX Ingress 控制器 是一个基于 Apache APISIX 网关 的 Ingress 控制器。
+Avi Kubernetes Operator 使用 VMware NSX Advanced Load Balancer 提供第 4 到第 7 层的负载均衡。
+BFE Ingress 控制器是一个基于 BFE 的 Ingress 控制器。
+Cilium Ingress 控制器是一个由 Cilium 出品支持的 Ingress 控制器。
+Citrix Ingress 控制器 可以用来与 Citrix Application Delivery Controller 一起使用。
+Contour 是一个基于 Envoy 的 Ingress 控制器。
+Emissary-Ingress API 网关是一个基于 Envoy 的入口控制器。
+EnRoute 是一个基于 Envoy 的 API 网关，可以用作 Ingress 控制器。
+Easegress IngressController 是一个基于 Easegress 的 API 网关，可以用作 Ingress 控制器。
+F5 BIG-IP 的 用于 Kubernetes 的容器 Ingress 服务 让你能够使用 Ingress 来配置 F5 BIG-IP 虚拟服务器。
+FortiADC Ingress 控制器 支持 Kubernetes Ingress 资源，并允许你从 Kubernetes 管理 FortiADC 对象。
+Gloo 是一个开源的、基于 Envoy 的 Ingress 控制器，能够提供 API 网关功能。
+HAProxy Ingress 是一个针对 HAProxy 的 Ingress 控制器。
+Higress 是一个基于 Envoy 的 API 网关， 可以作为一个 Ingress 控制器运行。
+用于 Kubernetes 的 HAProxy Ingress 控制器 也是一个针对 HAProxy 的 Ingress 控制器。
+Istio Ingress 是一个基于 Istio 的 Ingress 控制器。
+用于 Kubernetes 的 Kong Ingress 控制器 是一个用来驱动 Kong Gateway 的 Ingress 控制器。
+Kusk Gateway 是一个基于 Envoy 的、 OpenAPI 驱动的 Ingress 控制器。
+用于 Kubernetes 的 NGINX Ingress 控制器 能够与 NGINX 网页服务器（作为代理）一起使用。
+ngrok Kubernetes Ingress 控制器 是一个开源控制器，通过使用 ngrok 平台为你的 K8s 服务添加安全的公开访问权限。
+OCI Native Ingress Controller 是一个适用于 Oracle Cloud Infrastructure 的 Ingress 控制器，可帮助你管理 OCI 负载均衡。
+OpenNJet Ingress Controller 是一个基于 OpenNJet 的 Ingress 控制器。
+Pomerium Ingress 控制器 基于 Pomerium，能提供上下文感知的准入策略。
+Skipper HTTP 路由器和反向代理可用于服务组装，支持包括 Kubernetes Ingress 这类使用场景，是一个用以构造你自己的定制代理的库。
+Traefik Kubernetes Ingress 提供程序 是一个用于 Traefik 代理的 Ingress 控制器。
+Tyk Operator 使用自定义资源扩展 Ingress，为之带来 API 管理能力。Tyk Operator 使用开源的 Tyk Gateway & Tyk Cloud 控制面。
+Voyager 是一个针对 HAProxy 的 Ingress 控制器。
+Wallarm Ingress Controller 是提供 WAAP（WAF） 和 API 安全功能的 Ingress Controller。
+```
+```
+[root@master helm]# wget https://get.helm.sh/helm-v3.2.3-linux-amd64.tar.gz
+--2025-02-17 20:20:43--  https://get.helm.sh/helm-v3.2.3-linux-amd64.tar.gz
+正在解析主机 get.helm.sh (get.helm.sh)... 13.107.246.73, 2620:1ec:bdf::73
+正在连接 get.helm.sh (get.helm.sh)|13.107.246.73|:443... 已连接。
+已发出 HTTP 请求，正在等待回应... 200 OK
+长度：12924654 (12M) [application/x-tar]
+正在保存至: “helm-v3.2.3-linux-amd64.tar.gz”
+
+100%[========================================================================================>] 12,924,654  68.8KB/s 用时 2m 37s 
+
+2025-02-17 20:23:20 (80.4 KB/s) - 已保存 “helm-v3.2.3-linux-amd64.tar.gz” [12924654/12924654])
+
+[root@master helm]# tar -zxvf helm-v3.2.3-linux-amd64.tar.gz 
+linux-amd64/
+linux-amd64/README.md
+linux-amd64/LICENSE
+linux-amd64/helm
+[root@master helm]# ll
+总用量 12624
+-rw-r--r-- 1 root root 12924654 6月   8 2020 helm-v3.2.3-linux-amd64.tar.gz
+drwxr-xr-x 2 3434 3434       50 6月   8 2020 linux-amd64
+[root@master helm]# cd linux-amd64/
+[root@master linux-amd64]# ll
+总用量 39448
+-rwxr-xr-x 1 3434 3434 40378368 6月   8 2020 helm
+-rw-r--r-- 1 3434 3434    11373 6月   8 2020 LICENSE
+-rw-r--r-- 1 3434 3434     3319 6月   8 2020 README.md
+[root@master linux-amd64]# cp helm /usr/local/bin
+[root@master linux-amd64]# llcd /
+-bash: llcd: 未找到命令
+[root@master linux-amd64]# cd /
+[root@master /]# helm version
+version.BuildInfo{Version:"v3.2.3", GitCommit:"8f832046e258e2cb800894579b1b3b50c2d83492", GitTreeState:"clean", GoVersion:"go1.13.12"}
+[root@master /]# 
+```
+
+##### 添加 helm 仓库
+```
+[root@master /]# helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+"ingress-nginx" has been added to your repositories
+[root@master /]# helm repo list
+NAME            URL                                       
+ingress-nginx   https://kubernetes.github.io/ingress-nginx
+[root@master /]# helm search repo ingress-nginx
+NAME                            CHART VERSION   APP VERSION     DESCRIPTION                                       
+ingress-nginx/ingress-nginx     4.12.0          1.12.0          Ingress controller for Kubernetes using NGINX a...
+[root@master /]#
+```
+##### 下载包
+```
+[root@master helm]# helm search repo ingress-nginx --versions
+NAME                            CHART VERSION   APP VERSION     DESCRIPTION                                       
+ingress-nginx/ingress-nginx     4.12.0          1.12.0          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.11.4          1.11.4          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.11.3          1.11.3          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.11.2          1.11.2          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.11.1          1.11.1          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.11.0          1.11.0          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.10.6          1.10.6          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.10.5          1.10.5          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.10.4          1.10.4          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.10.3          1.10.3          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.10.2          1.10.2          Ingress controller for Kubernetes using NGINX a...
+ingress-nginx/ingress-nginx     4.10.1          1.10.1          Ingress controller for Kubernetes using NGINX a...
+
+
+[root@master helm]# helm pull ingress-nginx/ingress-nginx --version 4.4.2
+[root@master helm]# ll
+总用量 12672
+-rw-r--r-- 1 root root 12924654 6月   8 2020 helm-v3.2.3-linux-amd64.tar.gz
+-rw-r--r-- 1 root root    45268 2月  17 21:30 ingress-nginx-4.4.2.tgz
+drwxr-xr-x 2 3434 3434       50 6月   8 2020 linux-amd64
+[root@master helm]# tar -zxvf ingress-nginx-4.4.2.tgz 
+ingress-nginx/Chart.yaml
+ingress-nginx/values.yaml
+ingress-nginx/templates/NOTES.txt
+ingress-nginx/templates/_helpers.tpl
+ingress-nginx/templates/_params.tpl
+
+[root@master helm]# ll
+总用量 12672
+-rw-r--r-- 1 root root 12924654 6月   8 2020 helm-v3.2.3-linux-amd64.tar.gz
+drwxr-xr-x 4 root root      191 2月  17 21:31 ingress-nginx
+-rw-r--r-- 1 root root    45268 2月  17 21:30 ingress-nginx-4.4.2.tgz
+drwxr-xr-x 2 3434 3434       50 6月   8 2020 linux-amd64
+[root@master helm]# cd ingress-nginx
+[root@master ingress-nginx]# ll
+总用量 132
+-rw-r--r-- 1 root root 25165 12月 30 2022 CHANGELOG.md
+-rw-r--r-- 1 root root   452 12月 30 2022 changelog.md.gotmpl
+-rw-r--r-- 1 root root   853 12月 30 2022 Chart.yaml
+drwxr-xr-x 2 root root  4096 2月  17 21:31 ci
+-rw-r--r-- 1 root root   213 12月 30 2022 OWNERS
+-rw-r--r-- 1 root root 39130 12月 30 2022 README.md
+-rw-r--r-- 1 root root 12138 12月 30 2022 README.md.gotmpl
+drwxr-xr-x 3 root root  4096 2月  17 21:31 templates
+-rw-r--r-- 1 root root 32125 12月 30 2022 values.yaml
+```
+```
+# 修改 values.yaml配置文件
+镜像地址：修改为国内镜像
+registry: registry.cn-hangzhou.aliyuncs.com
+image: google_containers/nginx-ingress-controller
+image: google_containers/kube-webhook-certgen
+tag: v1.3.0
+
+hostNetwork: true
+dnsPolicy: ClusterFirstWithHostNet
+
+修改部署配置的 kind: DaemonSet
+nodeSelector:
+  ingress: "true" # 增加选择器，如果 node 上有 ingress=true 就部署
+将 admissionWebhooks.enabled 修改为 false
+将 service 中的 type 由 LoadBalancer 修改为 ClusterIP，如果服务器是云平台才用 LoadBalancer
+```
+```
+# 卸载掉之前的
+[root@master ingress-nginx]# kubectl get pod -n ingress-nginx
+NAME                             READY   STATUS             RESTARTS      AGE
+ingress-nginx-controller-txkvb   0/1     CrashLoopBackOff   8 (46s ago)   16m
+[root@master ingress-nginx]# helm uninstall ingress-nginx -n ingress-nginx
+release "ingress-nginx" uninstalled
+
+# 给node打标签
+[root@master ingress-nginx]# kubectl label node node1 ingress=true
+
+# 安装
+[root@master ingress-nginx]# helm install ingress-nginx  -n ingress-nginx .
+NAME: ingress-nginx
+LAST DEPLOYED: Mon Feb 17 21:42:05 2025
+NAMESPACE: ingress-nginx
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+The ingress-nginx controller has been installed.
+Get the application URL by running these commands:
+  export POD_NAME=$(kubectl --namespace ingress-nginx get pods -o jsonpath="{.items[0].metadata.name}" -l "app=ingress-nginx,component=controller,release=ingress-nginx")
+  kubectl --namespace ingress-nginx port-forward $POD_NAME 8080:80
+  echo "Visit http://127.0.0.1:8080 to access your application."
+
+An example Ingress that makes use of the controller:
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: example
+    namespace: foo
+  spec:
+    ingressClassName: nginx
+    rules:
+      - host: www.example.com
+        http:
+          paths:
+            - pathType: Prefix
+              backend:
+                service:
+                  name: exampleService
+                  port:
+                    number: 80
+              path: /
+    # This section is only required if TLS is to be enabled for the Ingress
+    tls:
+      - hosts:
+        - www.example.com
+        secretName: example-tls
+
+If TLS is enabled for the Ingress, a Secret containing the certificate and key must also be provided:
+
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: example-tls
+    namespace: foo
+  data:
+    tls.crt: <base64 encoded cert>
+    tls.key: <base64 encoded key>
+  type: kubernetes.io/tls
+```
+
+
