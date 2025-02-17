@@ -2588,7 +2588,7 @@ nginx-svc-external   ClusterIP   10.109.128.238   <none>        80/TCP         3
 
 ### Ingress（Ingress 大家可以理解为也是一种 LB 的抽象，它的实现也是支持 nginx、haproxy 等负载均衡服务的）
 ![image](https://github.com/user-attachments/assets/27ba5495-9b1d-4177-8824-10298335a701)
-#### 安装安装 ingress-nginx,还可以安装其他的
+#### ingress的所有版本，我这里选择的ingress-nginx，还可以安装其他的
 ```
 AKS 应用程序网关 Ingress 控制器 是一个配置 Azure 应用程序网关 的 Ingress 控制器。
 阿里云 MSE Ingress 是一个 Ingress 控制器，它负责配置阿里云原生网关， 也是 Higress 的商业版本。
@@ -2621,6 +2621,7 @@ Tyk Operator 使用自定义资源扩展 Ingress，为之带来 API 管理能力
 Voyager 是一个针对 HAProxy 的 Ingress 控制器。
 Wallarm Ingress Controller 是提供 WAAP（WAF） 和 API 安全功能的 Ingress Controller。
 ```
+#### 安装helm（有点类似maven或者yum，通过helm安装ingress）
 ```
 [root@master helm]# wget https://get.helm.sh/helm-v3.2.3-linux-amd64.tar.gz
 --2025-02-17 20:20:43--  https://get.helm.sh/helm-v3.2.3-linux-amd64.tar.gz
@@ -2658,7 +2659,7 @@ version.BuildInfo{Version:"v3.2.3", GitCommit:"8f832046e258e2cb800894579b1b3b50c
 [root@master /]# 
 ```
 
-##### 添加 helm 仓库
+##### 添加 helm的ingress仓库
 ```
 [root@master /]# helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 "ingress-nginx" has been added to your repositories
@@ -2687,7 +2688,7 @@ ingress-nginx/ingress-nginx     4.10.3          1.10.3          Ingress controll
 ingress-nginx/ingress-nginx     4.10.2          1.10.2          Ingress controller for Kubernetes using NGINX a...
 ingress-nginx/ingress-nginx     4.10.1          1.10.1          Ingress controller for Kubernetes using NGINX a...
 
-
+# 下载4.4.2版本
 [root@master helm]# helm pull ingress-nginx/ingress-nginx --version 4.4.2
 [root@master helm]# ll
 总用量 12672
@@ -2745,7 +2746,7 @@ ingress-nginx-controller-txkvb   0/1     CrashLoopBackOff   8 (46s ago)   16m
 [root@master ingress-nginx]# helm uninstall ingress-nginx -n ingress-nginx
 release "ingress-nginx" uninstalled
 
-# 给node打标签
+# 给node打标签（master被认为是污节点，所以安装不上）
 [root@master ingress-nginx]# kubectl label node node1 ingress=true
 
 # 安装
@@ -2799,6 +2800,13 @@ If TLS is enabled for the Ingress, a Secret containing the certificate and key m
     tls.crt: <base64 encoded cert>
     tls.key: <base64 encoded key>
   type: kubernetes.io/tls
+
+[root@master ingress-nginx]# kubectl get pod -n ingress-nginx
+NAME                             READY   STATUS    RESTARTS   AGE
+ingress-nginx-controller-v2wch   1/1     Running   0          26s
+[root@master ingress-nginx]# kubectl get pod -n ingress-nginx -owide --show-labels
+NAME                             READY   STATUS    RESTARTS   AGE   IP               NODE    NOMINATED NODE   READINESS GATES   LABELS
+ingress-nginx-controller-v2wch   1/1     Running   0          79s   192.168.30.162   node1   <none>           <none>            app.kubernetes.io/component=controller,app.kubernetes.io/instance=ingress-nginx,app.kubernetes.io/name=ingress-nginx,controller-revision-hash=56fc676cb,pod-template-generation=1
 ```
 
 
