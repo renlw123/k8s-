@@ -2621,7 +2621,8 @@ Tyk Operator 使用自定义资源扩展 Ingress，为之带来 API 管理能力
 Voyager 是一个针对 HAProxy 的 Ingress 控制器。
 Wallarm Ingress Controller 是提供 WAAP（WAF） 和 API 安全功能的 Ingress Controller。
 ```
-#### 安装helm（有点类似maven或者yum，通过helm安装ingress）
+#### 安装ingress-nginx
+##### 安装helm（有点类似maven或者yum，通过helm安装ingress）
 ```
 [root@master helm]# wget https://get.helm.sh/helm-v3.2.3-linux-amd64.tar.gz
 --2025-02-17 20:20:43--  https://get.helm.sh/helm-v3.2.3-linux-amd64.tar.gz
@@ -2808,5 +2809,51 @@ ingress-nginx-controller-v2wch   1/1     Running   0          26s
 NAME                             READY   STATUS    RESTARTS   AGE   IP               NODE    NOMINATED NODE   READINESS GATES   LABELS
 ingress-nginx-controller-v2wch   1/1     Running   0          79s   192.168.30.162   node1   <none>           <none>            app.kubernetes.io/component=controller,app.kubernetes.io/instance=ingress-nginx,app.kubernetes.io/name=ingress-nginx,controller-revision-hash=56fc676cb,pod-template-generation=1
 ```
+#### ingress资源基本使用（注意：上面安装的ingress-controller是它是实际处理流量的组件,现在安装的Ingress 资源依赖于 Ingress Controller 来实现流量路由，也就是ingress资源属于是负责路由管理的ingress）完整的请求路线>>>外部请求 -> Ingress Controller -> Ingress 资源（路由规则） -> Service -> endpoint -> Pod
+
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress # 资源类型为 Ingress
+metadata:
+  name: wolfcode-nginx-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules: # ingress 规则配置，可以配置多个
+  - host: k8s.wolfcode.cn # 域名配置，可以使用通配符 *
+    http:
+      paths: # 相当于 nginx 的 location 配置，可以配置多个
+      - pathType: Prefix # 路径类型，按照路径类型进行匹配 ImplementationSpecific 需要指定 IngressClass，具体匹配规则以 IngressClass 中的规则为准。Exact：精确匹配，URL需要与path完全匹配上，且区分大小写的。Prefix：以 / 作为分隔符来进行前缀匹配
+        backend:
+          service: 
+            name: nginx-svc # 代理到哪个 service
+            port: 
+              number: 80 # service 的端口
+        path: /api # 等价于 nginx 中的 location 的路径前缀匹配
+```
+
+```
+[root@master ingress]# kubectl apply -f wolfcode-ingress.yaml 
+ingress.networking.k8s.io/wolfcode-nginx-ingress configured
+[root@master ingress]# kubectl get ingress
+NAME                     CLASS    HOSTS                              ADDRESS         PORTS   AGE
+wolfcode-nginx-ingress   <none>   k8s.wolfcode.cn   10.102.121.38   80      15m
+```
+
+```
+# 注意这里ingress-controller是在node1节点
+[root@master ingress]# kubectl get po -n ingress-nginx
+NAME                             READY   STATUS    RESTARTS   AGE
+ingress-nginx-controller-45nrz   1/1     Running   0          21m
+[root@master ingress]# kubectl get po -n ingress-nginx -o wide
+NAME                             READY   STATUS    RESTARTS   AGE   IP               NODE    NOMINATED NODE   READINESS GATES
+ingress-nginx-controller-45nrz   1/1     Running   0          21m   192.168.30.162   node1   <none>           <none>
+```
+
+![image](https://github.com/user-attachments/assets/ce0789bf-6787-413c-b700-b56d3a0be845)
+
+![image](https://github.com/user-attachments/assets/cdf56558-8491-46f0-ae17-7c8c0dbb6136)
+
 
 
