@@ -2857,3 +2857,6 @@ ingress-nginx-controller-45nrz   1/1     Running   0          21m   192.168.30.1
 
 
 
+
+## 配置与存储
+
