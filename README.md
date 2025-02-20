@@ -2859,4 +2859,307 @@ ingress-nginx-controller-45nrz   1/1     Running   0          21m   192.168.30.1
 
 
 ## 配置与存储
+### 配置管理
+#### ConfigMap （一般用于去存储 Pod 中应用所需的一些配置信息，或者环境变量，将配置于 Pod 分开，避免应为修改配置导致还需要重新构建 镜像与容器。）
+##### 创建
+```
+[root@master test]# ll
+总用量 8
+-rw-r--r-- 1 root root 28 2月  20 20:50 test2.yaml
+-rw-r--r-- 1 root root 31 2月  20 20:50 test.text
+[root@master config]# kubectl create cm my-cm --from-file=test/
+configmap/my-cm created
+[root@master config]# kubectl get cm
+NAME               DATA   AGE
+kube-root-ca.crt   1      141d
+my-cm              2      4s
+[root@master test]# kubectl describe cm my-cm
+Name:         my-cm
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+test.text:
+----
+username=admin
+password=123456
+
+test2.yaml:
+----
+redis: 127.0.0.1
+port: 6379
+
+
+BinaryData
+====
+
+Events:  <none>
+
+[root@master test]# kubectl create cm my-cm2 --from-file=/opt/k8s/config/test/test.text 
+configmap/my-cm2 created
+[root@master test]# ll
+总用量 8
+-rw-r--r-- 1 root root 28 2月  20 20:50 test2.yaml
+-rw-r--r-- 1 root root 31 2月  20 20:50 test.text
+[root@master test]# kubectl describe cm my-cm2
+Name:         my-cm2
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+test.text:
+----
+username=admin
+password=123456
+
+
+BinaryData
+====
+
+Events:  <none>
+```
+
+
+```
+[root@master test]# kubectl create cm my-cm3 --from-file=rename=/opt/k8s/config/test/test2.yaml 
+configmap/my-cm3 created
+[root@master test]# kubectl get cm
+NAME               DATA   AGE
+kube-root-ca.crt   1      141d
+my-cm              2      2m10s
+my-cm2             1      43s
+my-cm3             1      4s
+[root@master test]# kubectl describe cm my-cm3
+Name:         my-cm3
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+rename:
+----
+redis: 127.0.0.1
+port: 6379
+
+
+BinaryData
+====
+
+Events:  <none>
+```
+```
+[root@master test]# kubectl create cm literal --from-literal=username=root --from-literal=password=123456
+configmap/literal created
+[root@master test]# kubectl get cm
+NAME               DATA   AGE
+kube-root-ca.crt   1      141d
+literal            2      4s
+my-cm              2      7m3s
+my-cm2             1      5m36s
+my-cm3             1      4m57s
+[root@master test]# kubectl describe cm literal
+Name:         literal
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+password:
+----
+123456
+username:
+----
+root
+
+BinaryData
+====
+
+Events:  <none>
+```
+
+##### 基本使用
+一、基于configMap把环境变量初始化到pod中
+```
+[root@master test]# kubectl create cm env --from-literal=JAVA_HOME_TEST='-Xms=512m -Xmx=512m' --from-literal=APPNAME=SPRINGBOOT_TEST
+configmap/env created
+
+[root@master test]# kubectl describe cm env
+Name:         env
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+APPNAME:
+----
+SPRINGBOOT_TEST
+JAVA_HOME_TEST:
+----
+-Xms=512m -Xmx=512m
+
+BinaryData
+====
+
+Events:  <none>
+```
+```
+# pod配置文件
+apiVersion: v1
+kind: Pod
+metadata: 
+  name: test-env-cm
+spec: 
+  containers:
+    - name: env-test
+      image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/alpine
+      command: ["/bin/sh","-c","env;sleep 3600"]
+      imagePullPolicy: IfNotPresent
+      
+      env: 
+      - name: JAVA_VM_OPTS
+        valueFrom: 
+          configMapKeyRef: 
+            name: env
+            key: JAVA_HOME_TEST
+      - name: APP
+        valueFrom: 
+          configMapKeyRef: 
+            name: env
+            key: APPNAME
+  restartPolicy: Never
+```
+```
+[root@master test]# kubectl apply -f env-test-cm.yaml 
+pod/test-env-cm created
+
+[root@master test]# kubectl logs -f test-env-cm
+KUBERNETES_SERVICE_PORT=443
+KUBERNETES_PORT=tcp://10.96.0.1:443
+NGINX_SVC_SERVICE_HOST=10.97.41.167
+HOSTNAME=test-env-cm
+NGINX_SVC_EXTERNAL_SERVICE_HOST=10.109.128.238
+SHLVL=1
+HOME=/root
+JAVA_VM_OPTS=-Xms=512m -Xmx=512m
+NGINX_SVC_SERVICE_PORT=80
+NGINX_SVC_PORT=tcp://10.97.41.167:80
+NGINX_SVC_EXTERNAL_SERVICE_PORT=80
+NGINX_SVC_EXTERNAL_PORT=tcp://10.109.128.238:80
+NGINX_SVC_SERVICE_PORT_WEB=80
+NGINX_SVC_PORT_80_TCP_ADDR=10.97.41.167
+APP=SPRINGBOOT_TEST
+NGINX_SVC_EXTERNAL_SERVICE_PORT_WEB=80
+NGINX_SVC_PORT_80_TCP_PORT=80
+NGINX_SVC_PORT_80_TCP_PROTO=tcp
+NGINX_SVC_EXTERNAL_PORT_80_TCP_ADDR=10.109.128.238
+KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+NGINX_SVC_EXTERNAL_PORT_80_TCP_PORT=80
+NGINX_SVC_EXTERNAL_PORT_80_TCP_PROTO=tcp
+KUBERNETES_PORT_443_TCP_PORT=443
+KUBERNETES_PORT_443_TCP_PROTO=tcp
+NGINX_SVC_PORT_80_TCP=tcp://10.97.41.167:80
+NGINX_SVC_EXTERNAL_PORT_80_TCP=tcp://10.109.128.238:80
+KUBERNETES_SERVICE_PORT_HTTPS=443
+KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443
+KUBERNETES_SERVICE_HOST=10.96.0.1
+PWD=/
+```
+二、使用数据卷的方式挂载configMap配置文件
+```
+[root@master test]# kubectl describe cm my-cm
+Name:         my-cm
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+test.text:
+----
+username=admin
+password=123456
+
+test2.yaml:
+----
+redis: 127.0.0.1
+port: 6379
+
+
+BinaryData
+====
+
+Events:  <none>
+```
+
+```
+apiVersion: v1
+kind: Pod
+metadata: 
+  name: test-env-cm
+spec: 
+  containers:
+    - name: env-test
+      image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/alpine
+      command: ["/bin/sh","-c","env;sleep 3600"]
+      imagePullPolicy: IfNotPresent
+      
+      env: 
+      - name: JAVA_VM_OPTS
+        valueFrom: 
+          configMapKeyRef: 
+            name: env # configMap名称
+            key: JAVA_HOME_TEST # 表示从name的Configmap中获取名字为key的value，将其赋值为本地环境变量JAVA_VM_OPTS
+      - name: APP
+        valueFrom: 
+          configMapKeyRef: 
+            name: env
+            key: APPNAME
+      volumeMounts: #记载数据卷
+        - name: db-config # 加载的valumes中的数据卷
+          mountPath: "/usr/local/mysql/conf" # 将数据卷中的文件加载到哪个目录下
+          readOnly: true # 只读
+  volumes: # 数据卷挂载configMap、secret
+    - name: db-config # 数据卷名称 
+      configMap: # 数据卷为configMap
+        name: my-cm # configmap名称，必须跟想要加载的configmap相同
+        items: # 对configmap中的key进行映射，如果不指定，默认会以configmap所有的key全部转换为一个个同名的文件
+        - key: "test.text" # kubectl describe cm my-cm 中的key(test.text)，而不是存储的key(username),value(123456)
+          path: "test.text" # 与mountPath地址拼接
+  restartPolicy: Never
+```
+
+```
+[root@master test]# kubectl apply -f env-test-cm.yaml 
+pod/test-env-cm created
+[root@master test]# kubectl get po
+NAME                            READY   STATUS    RESTARTS   AGE
+nginx-deploy-788875c698-926rz   1/1     Running   0          160m
+nginx-deploy-788875c698-mllbx   1/1     Running   0          160m
+nginx-deploy-788875c698-pbvgc   1/1     Running   0          159m
+test-env-cm                     1/1     Running   0          3s
+[root@master test]# kubectl exec -it test-env-cm -- sh
+/ # cd /usr/local/mysql/
+/usr/local/mysql # ll
+sh: ll: not found
+/usr/local/mysql # ls
+conf
+/usr/local/mysql # cd conf/
+/usr/local/mysql/conf # ls
+test.text
+/usr/local/mysql/conf # cat test.text 
+username=admin
+password=123456
+```
+
+
+
+
 
