@@ -3160,6 +3160,62 @@ password=123456
 ```
 
 
+#### 加密数据配置 Secret（与 ConfigMap 类似，用于存储配置信息，但是主要用于存储敏感信息、需要加密的信息，Secret 可以提供数据加密、解密功能。在创建 Secret 时，要注意如果要加密的字符中，包含了有特殊字符，需要使用转义符转移，例如 $ 转移后为 \$，也可以对特殊字符使用单引号描述，这样就不需要转移例如 1$289*-! 转换为 '1$289*-!'）
+##### 创建
+```
+[root@master ~]# kubectl create secret generic orig-secret --from-literal=username=admin --from-literal=password=123456
+secret/orig-secret created
+[root@master ~]# kubectl get secret
+NAME                  TYPE                                  DATA   AGE
+default-token-w6c5w   kubernetes.io/service-account-token   3      142d
+orig-secret           Opaque                                2      7s
+[root@master ~]# kubectl describe secret orig-secret
+Name:         orig-secret
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+password:  6 bytes
+username:  5 bytes
+[root@master ~]# echo 'admin' | base64
+YWRtaW4K
+[root@master ~]# echo YWRtaW4K | base64 --decode
+admin
+[root@master ~]#
+```
+##### 基本使用
+```
+[root@master ~]# kubectl create secret docker-registry harbor-secret --docker-username=admin --docker-password=123456 --docker-email=xxx@qq.com
+secret/harbor-secret created
+[root@master ~]# kubectl get secret
+NAME                  TYPE                                  DATA   AGE
+default-token-w6c5w   kubernetes.io/service-account-token   3      142d
+harbor-secret         kubernetes.io/dockerconfigjson        1      7s
+orig-secret           Opaque                                2      18m
+[root@master ~]# kubectl describe secret harbot-secret
+Error from server (NotFound): secrets "harbot-secret" not found
+[root@master ~]# kubectl describe secret harbor-secret
+Name:         harbor-secret
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  kubernetes.io/dockerconfigjson
+
+Data
+====
+.dockerconfigjson:  129 bytes
+
+[root@master ~]# kubectl edit secret harbor-secret
+Edit cancelled, no changes made.
+[root@master ~]# echo 'eyJhdXRocyI6eyJodHRwczovL2luZGV4LmRvY2tlci5pby92MS8iOnsidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoiMTIzNDU2IiwiZW1haWwiOiJ4eHhAcXEuY29tIiwiYXV0aCI6IllXUnRhVzQ2TVRJek5EVTIifX19' | base64 --decode
+{"auths":{"https://index.docker.io/v1/":{"username":"admin","password":"123456","email":"xxx@qq.com","auth":"YWRtaW46MTIzNDU2"}}}[root@master ~]# 
+```
+![image](https://github.com/user-attachments/assets/46e544c8-adc9-45bf-85a5-2f770cc7d81e)
 
 
 
