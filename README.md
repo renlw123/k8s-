@@ -3218,4 +3218,87 @@ Edit cancelled, no changes made.
 ![image](https://github.com/user-attachments/assets/46e544c8-adc9-45bf-85a5-2f770cc7d81e)
 
 
+#### subpath(subPath 是一种挂载卷时的配置，它允许你将卷的特定子路径挂载到容器中，而不是整个卷。它通常用于在一个卷中挂载多个文件或目录，或者当你不希望容器看到整个卷的内容时，使用 subPath 可以只选择卷中的一部分来挂载)
+##### 复制一份nginx.conf配置文件，并创建cm
+```
+user  nginx;
+worker_processes  auto;
 
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+```
+```
+[root@master config]# kubectl create cm nginx-conf-cm --from-file=./nginx.conf 
+configmap/nginx-conf-cm created
+[root@master config]# kubectl get cm
+NAME               DATA   AGE
+env                2      2d23h
+kube-root-ca.crt   1      144d
+literal            2      2d23h
+my-cm              2      2d23h
+my-cm2             1      2d23h
+my-cm3             1      2d23h
+nginx-conf-cm      1      4s
+```
+##### 编辑deploy并基于subpath挂载cm，通过subpath可避免全部文件挂载（否则可能会出现/etc/nginx下的文件只剩下nginx.conf导致pod启动不起来）
+```
+    spec:
+      containers:
+      - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+        imagePullPolicy: IfNotPresent
+        name: nginx
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/nginx/nginx.conf
+          name: nginx-conf
+          subPath: etc/nginx/nginx.conf
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          items:
+          - key: nginx.conf
+            path: etc/nginx/nginx.conf
+          name: nginx-conf-cm
+        name: nginx-conf
+```
+
+#### 配置热更新
