@@ -3268,6 +3268,8 @@ my-cm3             1      2d23h
 nginx-conf-cm      1      4s
 ```
 ##### 编辑deploy并基于subpath挂载cm，通过subpath可避免全部文件挂载（否则可能会出现/etc/nginx下的文件只剩下nginx.conf导致pod启动不起来）
+![image](https://github.com/user-attachments/assets/5c1ce32d-fc4b-4213-af36-271ff5518079)
+
 ```
     spec:
       containers:
