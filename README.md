@@ -3218,7 +3218,8 @@ Edit cancelled, no changes made.
 ![image](https://github.com/user-attachments/assets/46e544c8-adc9-45bf-85a5-2f770cc7d81e)
 
 
-#### subpath(subPath 是一种挂载卷时的配置，它允许你将卷的特定子路径挂载到容器中，而不是整个卷。它通常用于在一个卷中挂载多个文件或目录，或者当你不希望容器看到整个卷的内容时，使用 subPath 可以只选择卷中的一部分来挂载)
+#### SUBPATH(subPath 是一种挂载卷时的配置，它允许你将卷的特定子路径挂载到容器中，而不是整个卷。它通常用于在一个卷中挂载多个文件或目录，或者当你不希望容器看到整个卷的内容时，使用 subPath 可以只选择卷中的一部分来挂载)
+
 ##### 复制一份nginx.conf配置文件，并创建cm
 ```
 user  nginx;
