@@ -3304,4 +3304,166 @@ nginx-conf-cm      1      4s
         name: nginx-conf
 ```
 
-#### 配置热更新
+#### 配置热更新(我们通常会将项目的配置文件作为 configmap 然后挂载到 pod，那么如果更新 configmap 中的配置，会不会更新到 pod 中呢？这得分成几种情况：默认方式：会更新，更新周期是更新时间 + 缓存时间subPath：不会更新变量形式：如果 pod 中的一个变量是从 configmap 或 secret 中得到，同样也是不会更新的对于 subPath 的方式，我们可以取消 subPath 的使用，将配置文件挂载到一个不存在的目录，避免目录的覆盖，然后再利用软连接的形式，将该文件链接到目标位置,但是如果目标位置原本就有文件，可能无法创建软链接，此时可以基于前面讲过的 postStart 操作执行删除命令，将默认的吻技安删除即可)
+##### 通过edit修改configMap
+
+#### 不可变的 Secret 和 ConfigMap （对于一些敏感服务的配置文件，在线上有时是不允许修改的，此时在配置 configmap 时可以设置 immutable: true 来禁止修改）
+```
+apiVersion: v1
+data:
+  APPNAME: SPRINGBOOT_TEST
+  JAVA_HOME_TEST: -Xms=512m -Xmx=512m
+immutable: true
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2025-02-20T13:10:57Z"
+  name: env
+  namespace: default
+  resourceVersion: "256490"
+  uid: 7154eea3-b5b8-4407-b821-b0e23eae1757
+```
+```
+# 修改时会报错
+# Please edit the object below. Lines beginning with a '#' will be ignored,
+# and an empty file will abort the edit. If an error occurs while saving this file will be
+# reopened with the relevant failures.
+#
+# configmaps "env" was not valid:
+# * data: Forbidden: field is immutable when `immutable` is set
+#
+```
+
+
+### 持久化存储
+#### Volumes
+##### HostPath (将节点上的文件或目录挂载到 Pod 上，此时该目录会变成持久化存储目录，即使 Pod 被删除后重启，也可以重新加载到该目录，该目录下的文件不会丢失)
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pd
+spec:
+  containers:
+  - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+    name: nginx-volume
+    volumeMounts:
+    - mountPath: /test-pd # 挂载到容器的哪个目录
+      name: test-volume # 挂载哪个 volume
+  volumes:
+  - name: test-volume
+    hostPath:
+      path: /data # 节点中的目录
+      type: DirectoryOrcreate # 检查类型，在挂载前对挂载目录做什么检查操作，有多种选项，默认为空字符串，不做任何检查
+# 类型：
+# 空字符串：默认类型，不做任何检查
+# DirectoryOrCreate：如果给定的 path 不存在，就创建一个 755 的空目录
+# Directory：这个目录必须存在
+# FileOrCreate：如果给定的文件不存在，则创建一个空文件，权限为 644
+# File：这个文件必须存在
+# Socket：UNIX 套接字，必须存在
+# CharDevice：字符设备，必须存在
+# BlockDevice：块设备，必须存在
+```
+```
+[root@master volumes]# kubectl apply -f hostpath-pod.yaml 
+pod/test-pd created
+[root@master volumes]# kubectl get pod -o wide
+NAME                            READY   STATUS    RESTARTS      AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+nginx-deploy-6cd8b54689-7hz7q   1/1     Running   4 (37m ago)   37m     10.244.104.62    node2   <none>           <none>
+nginx-deploy-6cd8b54689-jj8xz   1/1     Running   1 (55m ago)   24h     10.244.104.59    node2   <none>           <none>
+nginx-deploy-6cd8b54689-nx4n9   1/1     Running   4 (36m ago)   37m     10.244.166.171   node1   <none>           <none>
+test-env-cm                     0/1     Error     0             3d23h   <none>           node1   <none>           <none>
+test-pd                         1/1     Running   0             8m9s    10.244.166.168   node1   <none>           <none>
+```
+```
+# 发现这个pod部署在node1上，所以去node1的/data目录下创建文件完成挂载
+# node1
+[root@node1 data]# pwd
+/data
+[root@node1 data]# ll
+总用量 4
+-rw-r--r-- 1 root root 10 2月  24 21:26 volumes.txt
+[root@node1 data]# 
+```
+```
+[root@master volumes]# kubectl exec -it test-pd -- sh
+# ls
+bin  boot  dev  docker-entrypoint.d  docker-entrypoint.sh  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  test-pd  tmp  usr  var
+# cd test-pd
+# cat volumes.txt
+from pod 
+# pwd
+/test-pd
+```
+
+##### EmptyDir(EmptyDir 主要用于一个 Pod 中不同的 Container 共享数据使用的，由于只是在 Pod 内部使用，因此与其他 volume 比较大的区别是，当 Pod 如果被删除了，那么 emptyDir 也会被删除。存储介质可以是任意类型，如 SSD、磁盘或网络存储。可以将 emptyDir.medium 设置为 Memory 让 k8s 使用 tmpfs（内存支持文件系统），速度比较快，但是重启 tmpfs 节点时，数据会被清除，且设置的大小会计入到 Container 的内存限制中。)
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: empty-dir-pd
+spec:
+  containers:
+  - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+    name: nginx-emptydir1
+    volumeMounts:
+    - mountPath: /test
+      name: cache-volume
+  - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/redis:latest
+    name: redis-emptydir2
+    volumeMounts:
+    - mountPath: /test2
+      name: cache-volume
+  volumes:
+  - name: cache-volume
+    emptyDir: {}
+```
+
+```
+[root@master volumes]# kubectl apply -f empty.yaml 
+pod/empty-dir-pd created
+[root@master volumes]# kubectl get po
+[root@master volumes]# kubectl get po
+NAME                            READY   STATUS    RESTARTS       AGE
+empty-dir-pd                    2/2     Running   0              55s
+nginx-deploy-6cd8b54689-7hz7q   1/1     Running   4 (89m ago)    89m
+nginx-deploy-6cd8b54689-jj8xz   1/1     Running   1 (107m ago)   24h
+nginx-deploy-6cd8b54689-nx4n9   1/1     Running   4 (88m ago)    89m
+test-env-cm                     0/1     Error     0              4d
+test-pd                         1/1     Running   0              60m
+```
+
+```
+# 第一个容器
+
+[root@master volumes]# kubectl exec -it empty-dir-pd -c nginx-emptydir1 -- sh
+# ls
+bin  boot  dev  docker-entrypoint.d  docker-entrypoint.sh  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  test  tmp  usr  var
+# cd test
+# ls
+# vi test.txt
+sh: 4: vi: not found
+# echo 'test' > index.html
+# ls
+index.html
+#
+```
+
+```
+# 第二个容器
+
+[root@master ~]# kubectl exec -it empty-dir-pd -c redis-empty2 -- sh
+Error from server (BadRequest): container redis-empty2 is not valid for pod empty-dir-pd
+[root@master ~]# kubectl exec -it empty-dir-pd -c redis-emptydir2 -- sh
+# ls
+# cd /
+# ls
+bin   data  etc   lib    media  opt   root  sbin  sys    tmp  var
+boot  dev   home  lib64  mnt    proc  run   srv   test2  usr
+# cd test2
+# ls
+# ls
+index.html
+#
+```
