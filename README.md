@@ -3500,7 +3500,6 @@ systemctl reload nfs-server
 
 # 到其他测试节点安装 nfs-utils 并加载测试
 mkdir -p /mnt/nfs/rw
-mount -t nfs 192.168.30.161:/home/nfs/rw /mnt/nfs/rw
 
 ```
 
