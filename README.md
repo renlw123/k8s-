@@ -3467,3 +3467,214 @@ boot  dev   home  lib64  mnt    proc  run   srv   test2  usr
 index.html
 #
 ```
+
+
+#### NFS 挂载 （nfs 卷能将 NFS (网络文件系统) 挂载到你的 Pod 中。 不像 emptyDir 那样会在删除 Pod 的同时也会被删除，nfs 卷的内容在删除 Pod 时会被保存，卷只是被卸载。 这意味着 nfs 卷可以被预先填充数据，并且这些数据可以在 Pod 之间共享。）
+
+##### 安装nfs
+```
+
+# 安装 nfs (三个节点都执行)
+yum install nfs-utils -y
+
+# 启动 nfs (三个节点都执行)
+systemctl start nfs-server
+
+# 查看 nfs 版本 (三个节点都执行)
+cat /proc/fs/nfsd/versions
+
+# 创建共享目录 (node1节点执行)
+mkdir -p /home/nfs
+cd /home/nfs
+mkdir rw
+mkdir ro
+
+# 设置共享目录 export (node1执行)
+vim /etc/exports
+/home/nfs/rw 192.168.30.0/24(rw,sync,no_subtree_check,no_root_squash)
+/home/nfs/ro 192.168.30.0/24(ro,sync,no_subtree_check,no_root_squash)
+
+# 重新加载 (node1执行)
+exportfs -f 
+systemctl reload nfs-server
+
+# 到其他测试节点安装 nfs-utils 并加载测试
+mkdir -p /mnt/nfs/rw
+mount -t nfs 192.168.30.161:/home/nfs/rw /mnt/nfs/rw
+
+```
+
+```
+# master 节点验证
+
+[root@master ~]# mount -t nfs 192.168.30.162:/home/nfs/rw /mnt/nfs/rw
+[root@master ~]# cd /mnt/nfs/rw/
+[root@master rw]# ll
+总用量 0
+[root@master rw]# mount -t nfs 192.168.30.162:/home/nfs/ro /mnt/nfs/ro
+[root@master rw]# cd /mnt/nfs/ro
+[root@master ro]# ll
+总用量 4
+-rw-r--r-- 1 root root 12 2月  25 20:31 README.md
+[root@master ro]# touch master
+touch: 无法创建"master": 只读文件系统
+
+[root@master ro]# cd ../rw
+[root@master rw]# ll
+总用量 0
+[root@master rw]# touch master
+[root@master rw]# ll
+总用量 0
+-rw-r--r-- 1 root root 0 2月  25 20:36 master
+
+# node1 节点
+
+[root@node1 rw]# pwd
+/home/nfs/rw
+[root@node1 rw]# ll
+总用量 0
+-rw-r--r-- 1 root root 0 2月  25 20:36 master
+
+```
+
+##### nfs挂载
+
+```
+# node1节点存储
+
+[root@node1 index]# pwd
+/home/nfs/rw/www/index
+[root@node1 index]# ll
+总用量 4
+-rw-r--r-- 1 root root 16 2月  25 20:59 index.html
+[root@node1 index]# cat index.html
+<h1>hello</h1>
+```
+
+```
+# master节点
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nfs-pd1
+spec:
+  containers:
+  - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+    name: test-container
+    volumeMounts:
+    - mountPath: /usr/share/nginx/html
+      name: test-volume
+  volumes:
+  - name: test-volume
+    nfs:
+      server: 192.168.30.162 # 网络存储服务地址
+      path: /home/nfs/rw/www/index # 网络存储路径
+      readOnly: false # 是否只读
+```
+
+```
+# master节点
+
+[root@master volumes]# kubectl apply -f nfs.yaml 
+pod/nfs-pd1 created
+[root@master volumes]# kubectl get po
+NAME                            READY   STATUS    RESTARTS      AGE
+empty-dir-pd                    2/2     Running   2 (45m ago)   22h
+nfs-pd1                         1/1     Running   0             53s
+nginx-deploy-6cd8b54689-7hz7q   1/1     Running   5 (45m ago)   24h
+nginx-deploy-6cd8b54689-jj8xz   1/1     Running   2 (45m ago)   47h
+nginx-deploy-6cd8b54689-nx4n9   1/1     Running   5 (45m ago)   24h
+
+[root@master volumes]# kubectl get po -o wide
+NAME                            READY   STATUS    RESTARTS      AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+empty-dir-pd                    2/2     Running   2 (46m ago)   22h     10.244.104.13    node2   <none>           <none>
+nfs-pd1                         1/1     Running   0             86s     10.244.166.170   node1   <none>           <none>
+nginx-deploy-6cd8b54689-7hz7q   1/1     Running   5 (46m ago)   24h     10.244.104.10    node2   <none>           <none>
+nginx-deploy-6cd8b54689-jj8xz   1/1     Running   2 (46m ago)   47h     10.244.104.11    node2   <none>           <none>
+nginx-deploy-6cd8b54689-nx4n9   1/1     Running   5 (46m ago)   24h     10.244.166.173   node1   <none>           <none>
+test-env-cm                     0/1     Error     0             4d23h   <none>           node1   <none>           <none>
+test-pd                         1/1     Running   1 (46m ago)   23h     10.244.166.172   node1   <none>           <none>
+[root@master volumes]# curl 10.244.166.170 
+<h1>hello</h1>
+```
+
+```
+# node1 节点
+
+[root@node1 index]# echo '<h1>hello2</h1>' > index.html 
+[root@node1 index]# cat index.html 
+<h1>hello2</h1>
+```
+
+```
+[root@master volumes]# curl 10.244.166.170 
+<h1>hello2</h1>
+```
+
+```
+# 创建第二个nfs pod （配置文件与第一个相同，只不过pod名称不同）
+
+[root@master volumes]# kubectl apply -f nfs2.yaml 
+pod/nfs-pd2 created
+
+[root@master volumes]# kubectl get po -o wide
+NAME                            READY   STATUS    RESTARTS      AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+empty-dir-pd                    2/2     Running   2 (49m ago)   22h     10.244.104.13    node2   <none>           <none>
+nfs-pd1                         1/1     Running   0             5m4s    10.244.166.170   node1   <none>           <none>
+nfs-pd2                         1/1     Running   0             22s     10.244.166.169   node1   <none>           <none>
+nginx-deploy-6cd8b54689-7hz7q   1/1     Running   5 (49m ago)   24h     10.244.104.10    node2   <none>           <none>
+nginx-deploy-6cd8b54689-jj8xz   1/1     Running   2 (49m ago)   47h     10.244.104.11    node2   <none>           <none>
+nginx-deploy-6cd8b54689-nx4n9   1/1     Running   5 (49m ago)   24h     10.244.166.173   node1   <none>           <none>
+test-env-cm                     0/1     Error     0             4d23h   <none>           node1   <none>           <none>
+test-pd                         1/1     Running   1 (49m ago)   23h     10.244.166.172   node1   <none>           <none>
+[root@master volumes]# curl  10.244.166.169
+<h1>hello2</h1>
+
+```
+# 此时node1 节点修改或删除文件 这里也会同样感知，
+
+[root@node1 index]# cat index.html 
+<h1>hello2</h1>
+[root@node1 index]# mv index.html index.html.bak 
+```
+
+```
+# master 节点
+
+[root@master volumes]# curl 10.244.166.170 
+<html>
+<head><title>403 Forbidden</title></head>
+<body>
+<center><h1>403 Forbidden</h1></center>
+<hr><center>nginx/1.27.1</center>
+</body>
+</html>
+[root@master volumes]# kubectl exec -it nfs-pd1  -- sh
+# ll
+sh: 1: ll: not found
+# cd /usr/share
+# ls
+X11              ca-certificates  doc         gcc       libc-bin     maven-repo  pam-configs  terminfo
+base-files       common-licenses  doc-base    gdb       libgcrypt20  menu        perl5        util-linux
+base-passwd      debconf          dpkg        info      lintian      misc        pixmaps      xml
+bash-completion  debianutils      fontconfig  java      locale       nginx       polkit-1     zoneinfo
+bug              dict             fonts       keyrings  man          pam         tabset       zsh
+# cd nginx
+# ls
+html
+# cd html
+# ls
+index.html.bak
+# mv index.html.bak index.html
+# exit
+[root@master volumes]# curl 10.244.166.170 
+<h1>hello2</h1>
+
+```
+
+```
+root@node1 index]# ll
+总用量 4
+-rw-r--r-- 1 root root 16 2月  25 21:11 index.html
+```
