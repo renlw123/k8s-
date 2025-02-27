@@ -3678,3 +3678,178 @@ root@node1 index]# ll
 总用量 4
 -rw-r--r-- 1 root root 16 2月  25 21:11 index.html
 ```
+
+
+#### PV与PVC
+
+| 组件        | 描述                                                             |
+|-------------|------------------------------------------------------------------|
+| **磁盘**    | 提供底层存储，通常是物理硬盘、云存储、网络存储等存储介质。           |
+| **PV**      | Persistent Volume，Kubernetes 中的存储资源抽象，代表一个已配置的存储卷。|
+| **PVC**     | Persistent Volume Claim，Pod 请求存储的方式，声明所需存储的大小和特性。 |
+| **Pod**     | 通过 PVC 请求存储，Pod 访问存储资源（即 PV），实现持久化存储。       |
+
+##### 生命周期
+一、构建  
+
+1.静态构建（集群管理员创建若干 PV 卷。这些卷对象带有真实存储的细节信息， 并且对集群用户可用（可见）。PV 卷对象存在于 Kubernetes API 中，可供用户消费（使用）。）  
+
+
+2.动态构建（如果集群中已经有的 PV 无法满足 PVC 的需求，那么集群会根据 PVC 自动构建一个 PV，该操作是通过 StorageClass 实现的。想要实现这个操作，前提是 PVC 必须设置 StorageClass，否则会无法动态构建该 PV，可以通过启用 DefaultStorageClass 来实现 PV 的构建。）  
+
+
+二、绑定 （当用户创建一个 PVC 对象后，主节点会监测新的 PVC 对象，并且寻找与之匹配的 PV 卷，找到 PV 卷后将二者绑定在一起。如果找不到对应的 PV，则需要看 PVC 是否设置 StorageClass 来决定是否动态创建 PV，若没有配置，PVC 就会一致处于未绑定状态，直到有与之匹配的 PV 后才会申领绑定关系。）  
+
+三、使用（Pod 将 PVC 当作存储卷来使用，集群会通过 PVC 找到绑定的 PV，并为 Pod 挂载该卷。Pod 一旦使用 PVC 绑定 PV 后，为了保护数据，避免数据丢失问题，PV 对象会受到保护，在系统中无法被删除。）  
+
+
+四、回收策略（当用户不再使用其存储卷时，他们可以从 API 中将 PVC 对象删除， 从而允许该资源被回收再利用。PersistentVolume 对象的回收策略告诉集群， 当其被从申领中释放时如何处理该数据卷。 目前，数据卷可以被 Retained（保留）、Recycled（回收）或 Deleted（删除）。）   
+
+
+1.保留（Retain）  
+
+```
+回收策略 Retain 使得用户可以手动回收资源。当 PersistentVolumeClaim 对象被删除时，PersistentVolume 卷仍然存在，对应的数据卷被视为"已释放（released）"。
+由于卷上仍然存在这前一申领人的数据，该卷还不能用于其他申领。 管理员可以通过下面的步骤来手动回收该卷：
+删除 PersistentVolume 对象。与之相关的、位于外部基础设施中的存储资产 （例如 AWS EBS、GCE PD、Azure Disk 或 Cinder 卷）在 PV 删除之后仍然存在。
+根据情况，手动清除所关联的存储资产上的数据。
+手动删除所关联的存储资产。
+如果你希望重用该存储资产，可以基于存储资产的定义创建新的 PersistentVolume 卷对象。
+```
+
+2.删除（Delete）  
+
+```
+对于支持 Delete 回收策略的卷插件，删除动作会将 PersistentVolume 对象从 Kubernetes 中移除，同时也会从外部基础设施（如 AWS EBS、GCE PD、Azure Disk 或 Cinder 卷）中移除所关联的存储资产。
+动态制备的卷会继承其 StorageClass 中设置的回收策略， 该策略默认为 Delete。管理员需要根据用户的期望来配置 StorageClass； 否则 PV 卷被创建之后必须要被编辑或者修补。
+```
+
+3.回收（Recycle）  
+
+```
+警告： 回收策略 Recycle 已被废弃。取而代之的建议方案是使用动态制备。
+
+如果下层的卷插件支持，回收策略 Recycle 会在卷上执行一些基本的擦除 （rm -rf /thevolume/*）操作，之后允许该卷用于新的 PVC 申领。
+```
+
+##### 持久卷（PersistentVolume，PV） 是集群中的一块存储，可以由管理员事先制备， 或者使用存储类（Storage Class）来动态制备。 持久卷是集群资源，就像节点也是集群资源一样。PV 持久卷和普通的 Volume 一样， 也是使用卷插件来实现的，只是它们拥有独立于任何使用 PV 的 Pod 的生命周期。 此 API 对象中记述了存储的实现细节，无论其背后是 NFS、iSCSI 还是特定于云平台的存储系统
+
+一、状态  
+```
+Available：空闲，未被绑定
+Bound：已经被 PVC 绑定
+Released：PVC 被删除，资源已回收，但是 PV 未被重新使用
+Failed：自动回收失败
+```
+
+二、配置文件  
+```
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv0001
+spec:
+  capacity:
+    storage: 5Gi # pv 的容量
+  volumeMode: Filesystem # 存储类型为文件系统
+  accessModes: # 访问模式：ReadWriteOnce、ReadWriteMany、ReadOnlyMany
+    - ReadWriteOnce # 可被单节点独写
+  persistentVolumeReclaimPolicy: Recycle # 回收策略
+  storageClassName: slow # 创建 PV 的存储类名，需要与 pvc 的相同
+  mountOptions: # 加载配置
+    - hard
+    - nfsvers=4.1
+  nfs: # 连接到 nfs
+    path: /home/nfs/rw/pv # 存储路径
+    server: 192.168.30.162 # nfs 服务地址
+```
+
+三、创建pv  
+```
+[root@master pv]# kubectl apply -f pv1.yaml 
+persistentvolume/pv0001 created
+[root@master pv]# kubectl get pv 
+NAME     CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+pv0001   5Gi        RWO            Recycle          Available           slow                    6s
+```
+
+##### 持久卷申领（PersistentVolumeClaim，PVC） 表达的是用户对存储的请求。概念上与 Pod 类似。 Pod 会耗用节点资源，而 PVC 申领会耗用 PV 资源。Pod 可以请求特定数量的资源（CPU 和内存）。同样 PVC 申领也可以请求特定的大小和访问模式 （例如，可以挂载为 ReadWriteOnce、ReadOnlyMany、ReadWriteMany 或 ReadWriteOncePod， 请参阅访问模式）
+
+一、配置文件  
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc0001
+spec:
+  accessModes:
+    - ReadWriteOnce # 权限需要与对应的 pv 相同
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 4Gi # 资源可以小于 pv 的，但是不能大于，如果大于就会匹配不到 pv
+  storageClassName: slow # 名字需要与对应的 pv 相同
+#  selector: # 使用选择器选择对应的 pv
+#    matchLabels:
+#      release: "stable"
+#    matchExpressions:
+#      - {key: environment, operator: In, values: [dev]}
+```
+二、创建pvc  
+```
+[root@master pvc]# kubectl apply -f pvc1.yaml 
+persistentvolumeclaim/pvc0001 created
+[root@master pvc]# kubectl get pvc
+NAME      STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+pvc0001   Bound    pv0001   5Gi        RWO            slow           4s
+[root@master pvc]# kubectl get pv
+NAME     CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM             STORAGECLASS   REASON   AGE
+pv0001   5Gi        RWO            Recycle          Bound    default/pvc0001   slow                    2m33s
+[root@master pvc]# 
+```
+
+三、创建pod
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pvc-pod0001
+spec:
+  containers:
+  - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+    name: nginx-volume
+    volumeMounts:
+    - mountPath: /usr/share/nginx/html # 挂载到容器的哪个目录
+      name: test-volume # 挂载哪个 volume
+  volumes:
+  - name: test-volume
+    persistentVolumeClaim: # 关联pvc
+      claimName: pvc0001 # pvc名称
+```
+
+```
+[root@master pvc]# kubectl apply -f pod-pvc.yaml 
+pod/pvc-pod0001 created
+[root@master pvc]# kubectl get pod -o wide
+NAME                            READY   STATUS             RESTARTS       AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+empty-dir-pd                    2/2     Running            4 (119m ago)   2d23h   10.244.104.17    node2   <none>           <none>
+nfs-pd1                         1/1     Running            1 (119m ago)   2d      10.244.166.174   node1   <none>           <none>
+nfs-pd2                         1/1     Running            1 (119m ago)   2d      10.244.166.176   node1   <none>           <none>
+nginx-deploy-6cd8b54689-7hz7q   1/1     Running            6 (119m ago)   3d      10.244.104.16    node2   <none>           <none>
+nginx-deploy-6cd8b54689-jj8xz   1/1     Running            3 (119m ago)   4d      10.244.104.15    node2   <none>           <none>
+nginx-deploy-6cd8b54689-nx4n9   1/1     Running            6 (119m ago)   3d      10.244.166.177   node1   <none>           <none>
+pvc-pod0001                     1/1     Running            0              9s      10.244.166.178   node1   <none>           <none>
+recycler-for-pv0001             0/1     ImagePullBackOff   0              4m41s   10.244.104.19    node2   <none>           <none>
+test-env-cm                     0/1     Error              0              6d23h   <none>           node1   <none>           <none>
+test-pd                         1/1     Running            2 (119m ago)   3d      10.244.166.175   node1   <none>           <none>
+[root@master pvc]#
+
+[root@master pvc]# curl 10.244.166.178
+<h1>pv pvc pod hello</h1>
+# node1 节点文件详情
+[root@node1 pv]# pwd
+/home/nfs/rw/pv
+[root@node1 pv]# cat index.html 
+<h1>pv pvc pod hello</h1>
+[root@node1 pv]# 
+```
