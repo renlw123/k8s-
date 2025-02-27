@@ -3631,6 +3631,7 @@ test-pd                         1/1     Running   1 (49m ago)   23h     10.244.1
 <h1>hello2</h1>
 
 ```
+```
 # 此时node1 节点修改或删除文件 这里也会同样感知，
 
 [root@node1 index]# cat index.html 
