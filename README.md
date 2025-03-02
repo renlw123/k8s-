@@ -1,4 +1,4 @@
-# 核心概念
+![image](https://github.com/user-attachments/assets/2d4addb4-75f3-4d47-af92-b7815b15ff22)# 核心概念
 ## 认识k8s
 ### 什么是k8s
 #### k8s是一个开源的，用于管理云平台中多个主机上的容器化的应用，k8s目标是为了让部署容器化的应用简单高效，k8s提供了应用部署、规划、更新和维护的一种机制。
@@ -3689,6 +3689,9 @@ root@node1 index]# ll
 | **PVC**     | Persistent Volume Claim，Pod 请求存储的方式，声明所需存储的大小和特性。 |
 | **Pod**     | 通过 PVC 请求存储，Pod 访问存储资源（即 PV），实现持久化存储。       |
 
+![image](https://github.com/user-attachments/assets/fa2fb675-ef15-49e3-95ec-38da278a5cb6)
+
+
 ##### 生命周期
 一、构建  
 
@@ -3852,4 +3855,334 @@ test-pd                         1/1     Running            2 (119m ago)   3d    
 [root@node1 pv]# cat index.html 
 <h1>pv pvc pod hello</h1>
 [root@node1 pv]# 
+```
+
+
+##### StorageClass（k8s 中提供了一套自动创建 PV 的机制，就是基于 StorageClass 进行的，通过 StorageClass 可以实现仅仅配置 PVC，然后交由 StorageClass 根据 PVC 的需求动态创建 PV。）
+
+![image](https://github.com/user-attachments/assets/5338c35e-3abd-4fe5-80ed-39aeb04f7425)
+
+一、RBAC（Role-Based Access Control）是 Kubernetes 用于 控制用户或服务对集群资源访问权限 的机制。通过 RBAC，可以精细化管理 谁（用户/服务账号） 可以对 哪些资源 执行 什么操作（读/写/删除等）
+```
+为什么创建 StorageClass 需要 RBAC？
+在 Kubernetes 中，StorageClass 只是一个定义，但真正的 存储分配是由存储 Provisioner 负责的。当 PVC（PersistentVolumeClaim）申请存储时：
+
+Provisioner 需要访问和操作 PersistentVolume（PV）、PersistentVolumeClaim（PVC）：
+读取 PVC 请求。
+创建 PV 资源，并绑定到 PVC。
+可能还要修改或删除 PVC/PV 资源。
+Provisioner 可能还需要管理 Endpoints、StorageClass 和 Events，用于记录日志或自动分配存储。
+这些操作 都需要 API 权限，而默认情况下 Kubernetes 不会授予 Pod 这些权限，因此 必须通过 RBAC 赋权
+```
+二、创建rbac
+```
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: nfs-client-provisioner-runner
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "update"]
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "update", "patch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: run-nfs-client-provisioner
+subjects:
+- kind: ServiceAccount
+  name: nfs-client-provisioner
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: nfs-client-provisioner-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-locking-nfs-client-provisioner
+rules:
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: leader-locking-nfs-client-provisioner
+subjects:
+- kind: ServiceAccount
+  name: nfs-client-provisioner
+  # replace with namespace where provisioner is deployed
+  namespace: kube-system
+roleRef:
+  kind: Role
+  name: leader-locking-nfs-client-provisioner
+  apiGroup: rbac.authorization.k8s.io
+
+```
+```
+[root@master sc]# kubectl apply -f nfs-provisioner-rbac.yaml 
+clusterrole.rbac.authorization.k8s.io/nfs-client-provisioner-runner created
+clusterrolebinding.rbac.authorization.k8s.io/run-nfs-client-provisioner created
+role.rbac.authorization.k8s.io/leader-locking-nfs-client-provisioner unchanged
+rolebinding.rbac.authorization.k8s.io/leader-locking-nfs-client-provisioner unchanged
+[root@master sc]# kubectl get clusterrole
+NAME                                                                   CREATED AT
+admin                                                                  2024-10-02T07:19:54Z
+calico-kube-controllers                                                2024-10-02T11:28:36Z
+calico-node                                                            2024-10-02T11:28:36Z
+cluster-admin                                                          2024-10-02T07:19:54Z
+edit                                                                   2024-10-02T07:19:54Z
+ingress-nginx                                                          2025-02-18T13:40:08Z
+kubeadm:get-nodes                                                      2024-10-02T07:19:55Z
+nfs-client-provisioner-runner                                          2025-03-02T13:24:06Z
+```
+
+三、创建Provisioner制备器（StorageClass的制备器），用来决定使用哪个卷插件制备 PV
+```
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nfs-client-provisioner
+  namespace: kube-system
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: kube-system
+  name: nfs-client-provisioner
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nfs-client-provisioner
+  template:
+    metadata:
+      labels:
+        app: nfs-client-provisioner
+    spec:
+      serviceAccount: nfs-client-provisioner
+      containers:
+        - name: nfs-client-provisioner
+#          image: quay.io/external_storage/nfs-client-provisioner:latest
+          image: registry.cn-beijing.aliyuncs.com/pylixm/nfs-subdir-external-provisioner:v4.0.0
+          volumeMounts:
+            - name: nfs-client-root
+              mountPath: /persistentvolumes
+          env:
+            - name: PROVISIONER_NAME
+              value: fuseim.pri/ifs
+            - name: NFS_SERVER
+              value: 192.168.30.162
+            - name: NFS_PATH
+              value: /home/nfs/rw
+      volumes:
+        - name: nfs-client-root
+          nfs:
+            server: 192.168.30.162
+            path: /home/nfs/rw
+```
+```
+[root@master sc]# kubectl apply -f nfs-provisioner-deployment.yaml 
+serviceaccount/nfs-client-provisioner unchanged
+deployment.apps/nfs-client-provisioner unchanged
+[root@master sc]# kubectl get deploy -n kube-system
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+calico-kube-controllers   1/1     1            1           151d
+coredns                   2/2     2            2           151d
+metrics-server            1/1     1            1           15d
+nfs-client-provisioner    1/1     1            1           47m
+
+[root@master sc]# kubectl get pod -n kube-system | grep nfs
+nfs-client-provisioner-dc6c4b947-z26tv    1/1     Running   0               49m
+```
+
+三、创建StorageClass
+```
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-nfs-storage
+provisioner: fuseim.pri/ifs
+parameters:
+  archiveOnDelete: "false"
+```
+```
+[root@master sc]# kubectl apply -f nfs-storage-class.yaml 
+storageclass.storage.k8s.io/managed-nfs-storage created
+[root@master sc]# kubectl get sc
+NAME                  PROVISIONER      RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+managed-nfs-storage   fuseim.pri/ifs   Delete          Immediate           false                  3s
+```
+
+四、创建sts以及基于步骤三创建的managed-nfs-storage（StorageClass）使用Provisioner制备器创建pv并于nginx-sc-test-pvc绑定
+
+```
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-sc
+  labels:
+    app: nginx-sc
+spec:
+  type: NodePort
+  ports:
+  - name: web
+    port: 80
+    protocol: TCP
+  selector:
+    app: nginx-sc
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nginx-sc
+spec:
+  replicas: 1
+  serviceName: "nginx-sc"
+  selector:
+    matchLabels:
+      app: nginx-sc
+  template:
+    metadata:
+      labels:
+        app: nginx-sc
+    spec:
+      containers:
+      - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+        name: nginx-sc
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - mountPath: /usr/share/nginx/html # # 挂载到容器的哪个目录
+          name: nginx-sc-test-pvc # 挂载哪个 volume
+  volumeClaimTemplates:
+  - metadata:
+      name: nginx-sc-test-pvc
+    spec:
+      storageClassName: managed-nfs-storage
+      accessModes:
+      - ReadWriteMany
+      resources:
+        requests:
+          storage: 1Gi
+
+```
+
+```
+[root@master sc]# kubectl apply -f nfs-sc-demo-statefulset.yaml 
+service/nginx-sc unchanged
+statefulset.apps/nginx-sc created
+[root@master sc]# kubectl get sts
+NAME       READY   AGE
+nginx-sc   1/1     4s
+[root@master sc]# kubectl get pod
+NAME                            READY   STATUS    RESTARTS   AGE
+nginx-deploy-6cd8b54689-fm7zr   1/1     Running   0          155m
+nginx-deploy-6cd8b54689-qjql2   1/1     Running   0          155m
+nginx-deploy-6cd8b54689-zb2wc   1/1     Running   0          155m
+nginx-sc-0                      1/1     Running   0          6s
+[root@master sc]# kubectl get pvc
+NAME                           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS          AGE
+nginx-sc-test-pvc-nginx-sc-0   Bound    pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d   1Gi        RWX            managed-nfs-storage   3m22s
+[root@master sc]# kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                  STORAGECLASS          REASON   AGE
+pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d   1Gi        RWX            Delete           Bound    default/nginx-sc-test-pvc-nginx-sc-0   managed-nfs-storage            3m26s
+[root@master sc]# 
+```
+
+五、验证pod
+```
+[root@master sc]# kubectl get pod
+NAME                            READY   STATUS    RESTARTS   AGE
+nginx-deploy-6cd8b54689-fm7zr   1/1     Running   0          158m
+nginx-deploy-6cd8b54689-qjql2   1/1     Running   0          158m
+nginx-deploy-6cd8b54689-zb2wc   1/1     Running   0          158m
+nginx-sc-0                      1/1     Running   0          3m25s
+
+[root@master sc]# kubectl exec -it nginx-sc-0      -- sh
+# cd /usr/share
+# ls
+X11          bash-completion  common-licenses  dict      dpkg        gcc   java      libgcrypt20  man         misc   pam-configs  polkit-1  util-linux  zsh
+base-files   bug              debconf          doc       fontconfig  gdb   keyrings  lintian      maven-repo  nginx  perl5        tabset    xml
+base-passwd  ca-certificates  debianutils      doc-base  fonts       info  libc-bin  locale       menu        pam    pixmaps      terminfo  zoneinfo
+# cd nginx
+# ls
+html
+# cd html
+# ls
+# ls
+index.html
+# cat index.html
+hello sc
+#
+```
+
+```
+# node1节点 nfs地址
+
+[root@node1 rw]# pwd
+/home/nfs/rw
+[root@node1 rw]# ll
+总用量 0
+drwxrwxrwx 2 root root 24 3月   2 22:31 default-nginx-sc-test-pvc-nginx-sc-0-pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d
+drwxrwxrwx 2 root root  6 3月   2 21:37 default-nginx-sc-test-pvc-nginx-sc-0-pvc-a491bcd2-3cc8-4bda-9c58-cbebf72d68d0
+drwxrwxrwx 2 root root  6 3月   2 21:51 default-test-nfs-pvc-pvc-0243ebd1-42d8-4204-9f88-8864a21a20f3
+-rw-r--r-- 1 root root  0 2月  25 20:36 master
+drwxr-xr-x 2 root root 24 2月  27 21:37 pv
+drwxr-xr-x 3 root root 19 2月  25 20:49 www
+```
+
+
+六、测试sc
+```
+[root@master sc]# cat test-sc.yaml 
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-nfs-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: managed-nfs-storage
+
+[root@master sc]# kubectl get sc
+NAME                  PROVISIONER      RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+managed-nfs-storage   fuseim.pri/ifs   Delete          Immediate           false                  15m
+[root@master sc]# kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                  STORAGECLASS          REASON   AGE
+pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d   1Gi        RWX            Delete           Bound    default/nginx-sc-test-pvc-nginx-sc-0   managed-nfs-storage            11m
+[root@master sc]# kubectl get pvc
+NAME                           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS          AGE
+nginx-sc-test-pvc-nginx-sc-0   Bound    pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d   1Gi        RWX            managed-nfs-storage   11m
+[root@master sc]# kubectl apply -f test-sc.yaml 
+persistentvolumeclaim/test-nfs-pvc created
+[root@master sc]# kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                  STORAGECLASS          REASON   AGE
+pvc-079b554a-f8fb-47d2-bd8d-635cea5c637c   1Gi        RWX            Delete           Bound    default/test-nfs-pvc                   managed-nfs-storage            5s
+pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d   1Gi        RWX            Delete           Bound    default/nginx-sc-test-pvc-nginx-sc-0   managed-nfs-storage            11m
+[root@master sc]# kubectl get pvc
+NAME                           STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS          AGE
+nginx-sc-test-pvc-nginx-sc-0   Bound    pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d   1Gi        RWX            managed-nfs-storage   11m
+test-nfs-pvc                   Bound    pvc-079b554a-f8fb-47d2-bd8d-635cea5c637c   1Gi        RWX            managed-nfs-storage   8s
+[root@master sc]# 
 ```
