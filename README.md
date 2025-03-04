@@ -4186,3 +4186,88 @@ nginx-sc-test-pvc-nginx-sc-0   Bound    pvc-4c22de7f-6099-4aff-8728-13b47c0e3c5d
 test-nfs-pvc                   Bound    pvc-079b554a-f8fb-47d2-bd8d-635cea5c637c   1Gi        RWX            managed-nfs-storage   8s
 [root@master sc]# 
 ```
+
+
+
+
+## 高级调度
+
+### CronJob计划任务
+```
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hello
+spec:
+  concurrencyPolicy: Allow # 并发调度策略：Allow 允许并发调度，Forbid：不允许并发执行，Replace：如果之前的任务还没执行完，就直接执行新的，放弃上一个任务
+  failedJobsHistoryLimit: 1 # 保留多少个失败的任务
+  successfulJobsHistoryLimit: 3 # 保留多少个成功的任务
+  suspend: false # 是否挂起任务，若为 true 则该任务不会执行
+#  startingDeadlineSeconds: 30 # 间隔多长时间检测失败的任务并重新执行，时间不能小于 10
+  schedule: "* * * * *" # 调度策略
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: hello
+            image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/sh
+            - -c
+            - date; echo Hello from the Kubernetes cluster
+          restartPolicy: OnFailure
+```
+```
+[root@master jobs]# kubectl apply -f cron-job.yaml 
+cronjob.batch/hello created
+[root@master jobs]# kubectl get cj
+NAME    SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+hello   * * * * *   False     0        <none>          5s
+[root@master jobs]# kubectl get cj
+NAME    SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+hello   * * * * *   False     0        27s             4m11s
+
+[root@master jobs]# kubectl get po
+NAME                            READY   STATUS      RESTARTS      AGE
+hello-29018260-7bqbh            0/1     Completed   0             46s
+nginx-deploy-6cd8b54689-fm7zr   1/1     Running     1 (77m ago)   2d1h
+nginx-deploy-6cd8b54689-qjql2   1/1     Running     1 (77m ago)   2d1h
+nginx-deploy-6cd8b54689-zb2wc   1/1     Running     1 (77m ago)   2d1h
+nginx-sc-0                      1/1     Running     1 (77m ago)   47h
+
+[root@master jobs]# kubectl logs -f hello-29018260-7bqbh  
+Tue Mar  4 13:41:01 UTC 2025
+Hello from the Kubernetes cluster
+
+[root@master jobs]# kubectl get po
+NAME                            READY   STATUS      RESTARTS      AGE
+hello-29018260-7bqbh            0/1     Completed   0             63s
+hello-29018261-4brth            0/1     Completed   0             3s
+nginx-deploy-6cd8b54689-fm7zr   1/1     Running     1 (78m ago)   2d1h
+nginx-deploy-6cd8b54689-qjql2   1/1     Running     1 (78m ago)   2d1h
+nginx-deploy-6cd8b54689-zb2wc   1/1     Running     1 (78m ago)   2d1h
+nginx-sc-0                      1/1     Running     1 (78m ago)   47h
+
+[root@master jobs]# kubectl logs -f hello-29018261-4brth 
+Tue Mar  4 13:41:01 UTC 2025
+Hello from the Kubernetes cluster
+```
+
+
+### 初始化容器 InitContainer （在真正的容器启动之前，先启动 InitContainer，在初始化容器中完成真实容器所需的初始化操作，完成后再启动真实的容器。相对于 postStart 来说，首先 InitController 能够保证一定在 EntryPoint 之前执行，而 postStart 不能，其次 postStart 更适合去执行一些命令操作，而 InitController 实际就是一个容器，可以在其他基础容器环境下执行更复杂的初始化功能）
+```
+在 pod 创建的模板中配置 initContainers 参数：
+spec:
+  initContainers:
+  - image: nginx
+    imagePullPolicy: IfNotPresent
+    command: ["sh", "-c", "echo 'inited;' >> ~/.init"]
+    name: init-test
+
+
+这个 initContainer： ✅ 作用：只是往 ~/.init 文件里写 "inited;"，可能是为了测试 initContainer 机制。
+✅ 不会影响主容器，因为 initContainer 执行完就会被清理，~/.init 也不会保留。
+✅ 实际应用中，可以用 initContainer 来创建目录、拷贝配置文件、检查依赖服务等
+```
