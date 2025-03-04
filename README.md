@@ -3987,7 +3987,7 @@ spec:
               mountPath: /persistentvolumes
           env:
             - name: PROVISIONER_NAME
-              value: fuseim.pri/ifs
+              value: fuseim.pri/ifs  # 关联sc。。
             - name: NFS_SERVER
               value: 192.168.30.162
             - name: NFS_PATH
@@ -4019,7 +4019,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: managed-nfs-storage
-provisioner: fuseim.pri/ifs
+provisioner: fuseim.pri/ifs # 关联sc。。
 parameters:
   archiveOnDelete: "false"
 ```
