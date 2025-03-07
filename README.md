@@ -4271,3 +4271,268 @@ spec:
 ✅ 不会影响主容器，因为 initContainer 执行完就会被清理，~/.init 也不会保留。
 ✅ 实际应用中，可以用 initContainer 来创建目录、拷贝配置文件、检查依赖服务等
 ```
+
+
+### 污点和容忍 (污点（Taint） 则相反——它使节点能够排斥一类特定的 Pod。容忍度（Toleration） 是应用于 Pod 上的。容忍度允许调度器调度带有对应污点的 Pod。 容忍度允许调度但并不保证调度：作为其功能的一部分， 调度器也会评估其他参数。)
+#### 污点（是标注在节点上的，当我们在一个节点上打上污点以后，k8s 会认为尽量不要将 pod 调度到该节点上，除非该 pod 上面表示可以容忍该污点，且一个节点可以打多个污点，此时则需要 pod 容忍所有污点才会被调度该节点。）
+```
+# 为某个节点添加污点
+[root@master ~]# kubectl taint node node2 memory=low:NoSchedule
+node/node2 tainted
+[root@master ~]# kubectl describe no  node2
+Name:               node2
+Roles:              <none>
+Labels:             beta.kubernetes.io/arch=amd64
+                    beta.kubernetes.io/os=linux
+                    kubernetes.io/arch=amd64
+                    kubernetes.io/hostname=node2
+                    kubernetes.io/os=linux
+                    type=microservices
+Annotations:        node.alpha.kubernetes.io/ttl: 0
+                    projectcalico.org/IPv4Address: 192.168.30.163/24
+                    projectcalico.org/IPv4IPIPTunnelAddr: 10.244.104.0
+                    volumes.kubernetes.io/controller-managed-attach-detach: true
+CreationTimestamp:  Wed, 02 Oct 2024 15:44:14 +0800
+Taints:             memory=low:NoSchedule
+Unschedulable:      false
+
+# 移除污点
+[root@master ~]# kubectl taint node node2 memory=low:NoSchedule-
+node/node2 untainted
+[root@master ~]# kubectl describe no  node2
+Name:               node2
+Roles:              <none>
+Labels:             beta.kubernetes.io/arch=amd64
+                    beta.kubernetes.io/os=linux
+                    kubernetes.io/arch=amd64
+                    kubernetes.io/hostname=node2
+                    kubernetes.io/os=linux
+                    type=microservices
+Annotations:        node.alpha.kubernetes.io/ttl: 0
+                    projectcalico.org/IPv4Address: 192.168.30.163/24
+                    projectcalico.org/IPv4IPIPTunnelAddr: 10.244.104.0
+                    volumes.kubernetes.io/controller-managed-attach-detach: true
+CreationTimestamp:  Wed, 02 Oct 2024 15:44:14 +0800
+Taints:             <none>
+Unschedulable:      false
+
+# 查看污点
+[root@master ~]# kubectl describe no master
+Name:               master
+Roles:              control-plane,master
+Labels:             beta.kubernetes.io/arch=amd64
+                    beta.kubernetes.io/os=linux
+                    ingress=true
+                    kubernetes.io/arch=amd64
+                    kubernetes.io/hostname=master
+                    kubernetes.io/os=linux
+                    node-role.kubernetes.io/control-plane=
+                    node-role.kubernetes.io/master=
+                    node.kubernetes.io/exclude-from-external-load-balancers=
+Annotations:        kubeadm.alpha.kubernetes.io/cri-socket: /var/run/dockershim.sock
+                    node.alpha.kubernetes.io/ttl: 0
+                    projectcalico.org/IPv4Address: 192.168.30.161/24
+                    projectcalico.org/IPv4IPIPTunnelAddr: 10.244.219.64
+                    volumes.kubernetes.io/controller-managed-attach-detach: true
+CreationTimestamp:  Wed, 02 Oct 2024 15:19:53 +0800
+Taints:             node-role.kubernetes.io/master:NoSchedule
+Unschedulable:      false
+```
+###### NoSchedule
+```
+# 给节点 node1 增加一个污点，它的键名是 key1，键值是 value1，效果是 NoSchedule。 这表示只有拥有和这个污点相匹配的容忍度的 Pod 才能够被分配到 node1 这个节点。
+[root@master ~]# kubectl taint no node1 memory=low:NoSchedule
+node/node1 tainted
+[root@master ~]#
+```
+###### NoExecute
+```
+# 这会影响已在节点上运行的 Pod，具体影响如下：
+# 如果 Pod 不能容忍这类污点，会马上被驱逐。
+# 如果 Pod 能够容忍这类污点，但是在容忍度定义中没有指定 tolerationSeconds， 则 Pod 还会一直在这个节点上运行。
+# 如果 Pod 能够容忍这类污点，而且指定了 tolerationSeconds， 则 Pod 还能在这个节点上继续运行这个指定的时间长度。 这段时间过去后，节点生命周期控制器从节点驱除这些 Pod。
+
+[root@master ~]# kubectl taint no node1 memory=hight:NoExecute
+node/node1 tainted
+
+# （上面标记了node1污点NoExecute， 所以现在都被调度到node2了）
+
+[root@master ~]# kubectl get po -o wide
+NAME                            READY   STATUS      RESTARTS        AGE     IP              NODE    NOMINATED NODE   READINESS GATES
+hello-29022568-g8xmj            0/1     Completed   0               2m12s   10.244.104.52   node2   <none>           <none>
+hello-29022569-vcjhd            0/1     Completed   0               72s     10.244.104.50   node2   <none>           <none>
+hello-29022570-jz6px            0/1     Completed   0               12s     10.244.104.51   node2   <none>           <none>
+nginx-deploy-7bcfd8bf84-84fkk   1/1     Running     0               2m35s   10.244.104.45   node2   <none>           <none>
+nginx-deploy-7bcfd8bf84-kwk6c   1/1     Running     0               2m35s   10.244.104.46   node2   <none>           <none>
+nginx-deploy-7bcfd8bf84-nh2kz   1/1     Running     1 (7h33m ago)   2d23h   10.244.104.63   node2   <none>           <none>
+nginx-sc-0                      1/1     Running     0               5m39s   10.244.104.30   node2   <none>           <none>
+# 删除污点
+[root@master ~]# kubectl taint no node1 memory=low:NoSchedule-
+node/node1 untainted
+[root@master ~]# kubectl taint no node1 memory=height:NoExecute-
+node/node1 untainted
+
+[root@master ~]# kubectl delete po nginx-deploy-7bcfd8bf84-84fkk nginx-deploy-7bcfd8bf84-kwk6c nginx-deploy-7bcfd8bf84-nh2kz
+pod "nginx-deploy-7bcfd8bf84-84fkk" deleted
+pod "nginx-deploy-7bcfd8bf84-kwk6c" deleted
+pod "nginx-deploy-7bcfd8bf84-nh2kz" deleted
+
+[root@master ~]# kubectl get po -o wide
+NAME                            READY   STATUS      RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29022568-g8xmj            0/1     Completed   0          2m39s   10.244.104.52    node2   <none>           <none>
+hello-29022569-vcjhd            0/1     Completed   0          99s     10.244.104.50    node2   <none>           <none>
+hello-29022570-jz6px            0/1     Completed   0          39s     10.244.104.51    node2   <none>           <none>
+nginx-deploy-7bcfd8bf84-wmc52   1/1     Running     0          4s      10.244.166.150   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-wrq8c   1/1     Running     0          4s      10.244.166.148   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-wzfpn   1/1     Running     0          4s      10.244.104.49    node2   <none>           <none>
+nginx-sc-0                      1/1     Running     0          6m6s    10.244.104.30    node2   <none>           <none>
+[root@master ~]# 
+```
+
+#### 容忍（Toleration是标注在 pod 上的，当 pod 被调度时，如果没有配置容忍，则该 pod 不会被调度到有污点的节点上，只有该 pod 上标注了满足某个节点的所有污点，则会被调度到这些节点）
+##### Equal
+```
+[root@master ~]# kubectl taint node node2 memory=low:NoSchedule
+node/node2 tainted
+
+[root@master ~]# kubectl get po -o wide
+NAME                            READY   STATUS      RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29022579-fc7wp            0/1     Completed   0          2m13s   10.244.166.161   node1   <none>           <none>
+hello-29022580-2g4ck            0/1     Completed   0          73s     10.244.166.160   node1   <none>           <none>
+hello-29022581-wq68q            0/1     Completed   0          13s     10.244.166.159   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-wmc52   1/1     Running     0          10m     10.244.166.150   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-wrq8c   1/1     Running     0          10m     10.244.166.148   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-wzfpn   1/1     Running     0          10m     10.244.104.49    node2   <none>           <none>
+nginx-sc-0                      1/1     Running     0          16m     10.244.104.30    node2   <none>           <none>
+[root@master ~]# kubectl delete po nginx-deploy-7bcfd8bf84-wmc52 nginx-deploy-7bcfd8bf84-wrq8c nginx-deploy-7bcfd8bf84-wzfpn
+pod "nginx-deploy-7bcfd8bf84-wmc52" deleted
+pod "nginx-deploy-7bcfd8bf84-wrq8c" deleted
+pod "nginx-deploy-7bcfd8bf84-wzfpn" deleted
+
+# 可以发现在node2添加了污点后再重启pod就都跑到node1节点了
+[root@master ~]# kubectl get po -o wide
+NAME                            READY   STATUS      RESTARTS   AGE    IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29022580-2g4ck            0/1     Completed   0          2m6s   10.244.166.160   node1   <none>           <none>
+hello-29022581-wq68q            0/1     Completed   0          66s    10.244.166.159   node1   <none>           <none>
+hello-29022582-h6pfx            0/1     Completed   0          6s     10.244.166.162   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-76g2j   1/1     Running     0          10s    10.244.166.164   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-gmkh8   1/1     Running     0          10s    10.244.166.167   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-ssgnz   1/1     Running     0          10s    10.244.166.163   node1   <none>           <none>
+nginx-sc-0                      1/1     Running     0          17m    10.244.104.30    node2   <none>           <none>
+[root@master ~]#
+
+```
+
+```
+# 添加容忍
+[root@master ~]# kubectl edit deploy nginx-deploy
+deployment.apps/nginx-deploy edited
+
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 3
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nginx-deploy
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nginx-deploy
+    spec:
+      tolerations: # 主要在这里添加equal容忍
+      - key: "memory"
+        operator: "Equal"
+        value: "low"
+        effect: "NoSchedule"
+      containers:
+      - image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest
+        imagePullPolicy: IfNotPresent
+
+[root@master ~]# kubectl get po -o wide
+NAME                            READY   STATUS              RESTARTS   AGE    IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29022584-wk9vn            0/1     Completed           0          3m     10.244.166.165   node1   <none>           <none>
+hello-29022585-ccbxw            0/1     Completed           0          2m     10.244.166.171   node1   <none>           <none>
+hello-29022586-87zlf            0/1     Completed           0          60s    10.244.166.168   node1   <none>           <none>
+hello-29022587-stggg            0/1     ContainerCreating   0          0s     <none>           node1   <none>           <none>
+nginx-deploy-6d6bbbfbf4-9xsw7   1/1     Running             0          8s     10.244.104.53    node2   <none>           <none>
+nginx-deploy-6d6bbbfbf4-ddp4j   0/1     PodInitializing     0          2s     10.244.166.173   node1   <none>           <none>
+nginx-deploy-6d6bbbfbf4-z9zh6   1/1     Running             0          5s     10.244.166.172   node1   <none>           <none>
+nginx-deploy-7bcfd8bf84-gmkh8   1/1     Running             0          5m4s   10.244.166.167   node1   <none>           <none>
+nginx-sc-0                      1/1     Running             0          22m    10.244.104.30    node2   <none>           <none>
+[root@master ~]#
+
+# 可以发现部分pod又跑回到了node2，不会都被赶去node1了
+```
+
+##### Exists 容忍与污点的比较只比较 key，不比较 value，不关心 value 是什么东西，只要 key 存在，就表示可以容忍。
+```
+# 添加Exists容忍
+[root@master ~]# kubectl edit deploy nginx-deploy
+
+      tolerations:
+      - effect: NoSchedule
+        key: memory
+        operator: "Exists"
+
+deployment.apps/nginx-deploy edited
+[root@master ~]# kubectl get po -o wide
+NAME                           READY   STATUS      RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29022591-mxhzb           0/1     Completed   0          2m24s   10.244.166.177   node1   <none>           <none>
+hello-29022592-dllwn           0/1     Completed   0          84s     10.244.166.176   node1   <none>           <none>
+hello-29022593-sqntc           0/1     Completed   0          24s     10.244.166.175   node1   <none>           <none>
+nginx-deploy-65696579d-4p7dx   1/1     Running     0          13s     10.244.166.179   node1   <none>           <none>
+nginx-deploy-65696579d-7bnp2   1/1     Running     0          6s      10.244.166.180   node1   <none>           <none>
+nginx-deploy-65696579d-lrcbn   1/1     Running     0          9s      10.244.104.55    node2   <none>           <none>
+nginx-sc-0                     1/1     Running     0          28m     10.244.104.30    node2   <none>           <none>
+[root@master ~]# 
+```
+
+##### 添加NoExecute容忍
+```
+[root@master ~]# kubectl taint no node2 memory=low:NoSchedule-
+node/node2 untainted
+
+[root@master ~]# kubectl taint no node2 memory=low:NoExecute
+node/node2 tainted
+
+[root@master ~]# kubectl get po -o wide
+NAME                           READY   STATUS              RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29022599-h7nw7           0/1     Completed           0          3m1s    10.244.166.191   node1   <none>           <none>
+hello-29022600-zth9s           0/1     Completed           0          2m1s    10.244.166.189   node1   <none>           <none>
+hello-29022601-t4ds7           0/1     Completed           0          61s     10.244.166.188   node1   <none>           <none>
+hello-29022602-9vcjp           0/1     ContainerCreating   0          1s      <none>           node1   <none>           <none>
+nginx-deploy-65696579d-4p7dx   1/1     Running             0          8m50s   10.244.166.179   node1   <none>           <none>
+nginx-deploy-65696579d-7bnp2   1/1     Running             0          8m43s   10.244.166.180   node1   <none>           <none>
+nginx-deploy-65696579d-r5wjb   1/1     Running             0          31s     10.244.166.190   node1   <none>           <none>
+nginx-sc-0                     1/1     Running             0          30s     10.244.166.131   node1   <none>           <none>
+[root@master ~]#
+
+
+[root@master ~]# kubectl edit deploy nginx-deploy
+deployment.apps/nginx-deploy edited
+
+    tolerations:
+    - key: "memory"
+      operator: "Exists"
+      value: "value1"
+      effect: "NoExecute" # 如果 Pod 能够容忍这类污点，但是在容忍度定义中没有指定 tolerationSeconds， 则 Pod 还会一直在这个节点上运行。
+      tolerationSeconds: 3600 # 如果 Pod 能够容忍这类污点，而且指定了 tolerationSeconds， 则 Pod 还能在这个节点上继续运行这个指定的时间长度。 这段时间过去后，节点生命周期控制器从节点驱除这些 Pod。
+
+[root@master ~]# kubectl get po -o wide
+NAME                            READY   STATUS      RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29022604-nmphl            0/1     Completed   0          2m36s   10.244.166.135   node1   <none>           <none>
+hello-29022605-xlwjk            0/1     Completed   0          96s     10.244.166.136   node1   <none>           <none>
+hello-29022606-z9mhs            0/1     Completed   0          36s     10.244.166.137   node1   <none>           <none>
+nginx-deploy-8487ff77b4-2w5wt   1/1     Running     0          3m13s   10.244.104.58    node2   <none>           <none>
+nginx-deploy-8487ff77b4-4w7bd   1/1     Running     0          3m15s   10.244.166.134   node1   <none>           <none>
+nginx-deploy-8487ff77b4-847xz   1/1     Running     0          3m17s   10.244.104.54    node2   <none>           <none>
+nginx-sc-0                      1/1     Running     0          5m5s    10.244.166.131   node1   <none>           <none>
+
+```
