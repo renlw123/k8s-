@@ -4536,3 +4536,169 @@ nginx-deploy-8487ff77b4-847xz   1/1     Running     0          3m17s   10.244.10
 nginx-sc-0                      1/1     Running     0          5m5s    10.244.166.131   node1   <none>           <none>
 
 ```
+
+
+### 亲和力（Affinity）
+#### NodeAffinity（节点亲和力：进行 pod 调度时，优先调度到符合条件的亲和力节点上）
+##### 分别给node1、node2 打标签
+```
+[root@master ~]# kubectl label no node1 label1=value1
+node/node1 labeled
+[root@master ~]# kubectl label no node2 label2=value2
+node/node2 labeled
+[root@master ~]# kubectl get no --show-labels
+NAME     STATUS   ROLES                  AGE    VERSION   LABELS
+master   Ready    control-plane,master   160d   v1.23.6   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,ingress=true,kubernetes.io/arch=amd64,kubernetes.io/hostname=master,kubernetes.io/os=linux,node-role.kubernetes.io/control-plane=,node-role.kubernetes.io/master=,node.kubernetes.io/exclude-from-external-load-balancers=
+node1    Ready    <none>                 160d   v1.23.6   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,ingress=true,kubernetes.io/arch=amd64,kubernetes.io/hostname=node1,kubernetes.io/os=linux,label1=value1,type=microservices
+node2    Ready    <none>                 160d   v1.23.6   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/arch=amd64,kubernetes.io/hostname=node2,kubernetes.io/os=linux,label2=value2,type=microservices
+[root@master ~]# 
+```
+
+##### 修改deploy，添加亲和力配置
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deploy
+  labels:
+    app: nginx-deploy
+spec:
+  progressDeadlineSeconds: 600 # 设置滚动更新的超时时间（秒）
+  replicas: 3 # 副本数量
+  revisionHistoryLimit: 10 # 记录历史版本数量，方便回滚
+  selector:
+    matchLabels:
+      app: nginx-deploy # 选择匹配的 Pod
+  strategy:
+    type: RollingUpdate # 采用滚动更新策略
+    rollingUpdate:
+      maxSurge: 25% # 在更新过程中，最多可以比期望的 Pod 数多 25%
+      maxUnavailable: 25% # 在更新过程中，最多可以有 25% 的 Pod 不可用
+  template:
+    metadata:
+      labels:
+        app: nginx-deploy # Pod 标签
+    spec:
+      affinity: # 定义亲和性调度规则
+        nodeAffinity: # 节点亲和性
+          requiredDuringSchedulingIgnoredDuringExecution: # 必须满足的规则
+            nodeSelectorTerms: # 定义节点选择条件
+            - matchExpressions: # 匹配表达式列表
+              - key: kubernetes.io/os # 需要匹配的节点标签（Key）
+                operator: In # 操作符，表示 Key 的值必须在 values 列表内
+                values: # 允许的值列表
+                - linux # 只允许调度到 "kubernetes.io/os=linux" 的节点上
+          preferredDuringSchedulingIgnoredDuringExecution: # 优先选择的规则
+          - weight: 1 # 权重值（数值越高，优先级越高）
+            preference: # 偏好设置
+              matchExpressions: # 匹配表达式列表
+              - key: label1 # 需要匹配的节点标签（Key）
+                operator: In # 操作符，表示 Key 的值必须在 values 列表内
+                values: # 允许的值列表
+                - value1 # 该节点有 "label1=value1" 时，权重+1
+          - weight: 50 # 权重值（比上面的 1 更高，优先级更高）
+            preference: # 偏好设置
+              matchExpressions: # 匹配表达式列表
+              - key: label2 # 需要匹配的节点标签（Key）
+                operator: In # 操作符，表示 Key 的值必须在 values 列表内
+                values: # 允许的值列表
+                - value2 # 该节点有 "label2=value2" 时，权重+50
+      containers:
+      - name: nginx # 容器名称
+        image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/nginx:latest # 指定镜像
+        ports:
+        - containerPort: 80 # 暴露容器端口
+-- INSERT --
+```
+
+##### 重启deploy
+```
+[root@master ~]# kubectl get po -o wide
+NAME                            READY   STATUS      RESTARTS   AGE     IP               NODE    NOMINATED NODE   READINESS GATES
+hello-29028290-67qpw            0/1     Completed   0          2m57s   10.244.166.160   node1   <none>           <none>
+hello-29028291-thq62            0/1     Completed   0          117s    10.244.166.158   node1   <none>           <none>
+hello-29028292-kjc9m            0/1     Completed   0          57s     10.244.166.155   node1   <none>           <none>
+nginx-deploy-5d64d79495-79b2p   1/1     Running     0          5s      10.244.104.4     node2   <none>           <none>
+nginx-deploy-5d64d79495-j8g95   1/1     Running     0          12s     10.244.104.43    node2   <none>           <none>
+nginx-deploy-5d64d79495-s69pn   1/1     Running     0          9s      10.244.104.3     node2   <none>           <none>
+nginx-sc-0                      1/1     Running     0          57m     10.244.166.166   node1   <none>           <none>
+[root@master ~]# 
+```
+
+##### 匹配类型Kubernetes `matchExpressions` 匹配类型
+
+| **匹配类型** | **说明** | **示例** |
+|-------------|---------|---------|
+| `In` | 键的值必须在 `values` 列表中 | `key: kubernetes.io/os`<br>`operator: In`<br>`values: [linux]`<br>（只允许 `linux` 节点） |
+| `NotIn` | 键的值不能在 `values` 列表中 | `key: kubernetes.io/os`<br>`operator: NotIn`<br>`values: [windows]`<br>（排除 `windows` 节点） |
+| `Exists` | 节点必须包含该键（值无关紧要） | `key: label1`<br>`operator: Exists`<br>（只要 `label1` 存在，就匹配） |
+| `DoesNotExist` | 节点不能包含该键 | `key: label1`<br>`operator: DoesNotExist`<br>（如果 `label1` 存在，则不匹配） |
+| `Gt` | 键的值必须大于 `values` 中的单个数值 | `key: cpu-count`<br>`operator: Gt`<br>`values: [4]`<br>（要求 `cpu-count` 大于 4） |
+| `Lt` | 键的值必须小于 `values` 中的单个数值 | `key: memory-size`<br>`operator: Lt`<br>`values: [16]`<br>（要求 `memory-size` 小于 16） |
+
+---
+**说明**：
+- `In` 和 `NotIn` 需要提供 `values` 列表。
+- `Exists` 和 `DoesNotExist` 只判断键是否存在，不需要 `values`。
+- `Gt` 和 `Lt` 适用于数值类型的标签，`values` 只能包含一个数值。
+
+#### PodAffinity（Pod 亲和力：将与指定 pod 亲和力相匹配的 pod 部署在同一节点）与PodAntiAffinity （Pod 反亲和力：根据策略尽量部署或不部署到一块）
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deploy
+  labels:
+    app: nginx-deploy
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx-deploy
+  template:
+    metadata:
+      labels:
+        app: nginx-deploy
+    spec:
+      affinity:
+        podAffinity: # Pod 亲和性 
+          requiredDuringSchedulingIgnoredDuringExecution: # 强制亲和规则->新 Pod 必须 被调度到 已有 app=my-app 的 Pod 所在的同一 Node，否则调度失败
+          - labelSelector:
+              matchLabels:
+                app: my-app # 目标 Pod 必须包含这个标签
+            topologyKey: "kubernetes.io/hostname" # 目标 Pod 必须在相同主机上
+
+          preferredDuringSchedulingIgnoredDuringExecution: # 软性亲和规则->新 Pod 优先 调度到 已有 app=my-app 的 Pod 所在的相同可用区，但如果无法满足，会被调度到其他区域。
+          - weight: 50 # 优先级权重
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: my-app
+              topologyKey: "topology.kubernetes.io/zone" # 目标 Pod 优先调度到相同可用区
+
+        podAntiAffinity: # Pod 反亲和性
+          requiredDuringSchedulingIgnoredDuringExecution: # 强制反亲和规则->如果 node-1 上已经有 app=nginx 的 Pod，新的 Pod 不能再被调度到 node-1。
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - nginx
+            topologyKey: "kubernetes.io/hostname" # 避免调度到相同主机
+
+          preferredDuringSchedulingIgnoredDuringExecution: # 软性反亲和规则->尽量让 nginx Pod 分布在不同的可用区，但如果资源不足，仍然可能调度到相同的区域
+          - weight: 30 # 优先级权重
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: nginx
+              topologyKey: "topology.kubernetes.io/zone" # 尽量不调度到相同可用区
+
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+
+```
