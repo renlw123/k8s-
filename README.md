@@ -4702,3 +4702,185 @@ spec:
         - containerPort: 80
 
 ```
+
+
+
+
+## 身份认证与权限（Kubernetes 中提供了良好的多租户认证管理机制，如 RBAC、ServiceAccount 还有各种策略等。通过该文件可以看到已经配置了 RBAC 访问控制/usr/lib/systemd/system/kube-apiserver.service）
+### 认证
+#### User Accounts 与 Service Accounts
+| **类别**          | **User Accounts** | **Service Accounts** |
+|-------------------|------------------|----------------------|
+| **对象**          | 人类用户         | Pod 或 Controller    |
+| **管理方式**      | 外部身份管理（OIDC、LDAP） | Kubernetes 自动管理 |
+| **使用场景**      | `kubectl`、集群管理 | Pod 访问 API Server |
+| **存储位置**      | `kubeconfig` 配置文件 | Kubernetes Secret（或 Token Projection） |
+| **认证方式**      | 证书、Token、OIDC | Service Account Token |
+
+#### Service Account 相关控制器
+| **控制器**                      | **作用** |
+|---------------------------------|---------|
+| **Service Account Admission Controller** | 在创建 Pod 时，自动为其分配默认的 Service Account，并自动挂载 API 访问 Token。 |
+| **Token Controller** | 负责为 Service Account 生成长期 Token（逐步被 Token Projection 取代）。 |
+| **Service Account Controller** | 在新 `namespace` 创建时，自动创建 `default` Service Account。 |
+
+#### Service Account Token 机制
+| **Token 类型** | **特点** |
+|---------------|---------|
+| **长期 Token**（基于 Secret，逐步废弃） | 由 `Token Controller` 生成，存储在 `Secret` 资源中，长期有效，存在安全风险。 |
+| **短期 Token**（Service Account Token Projection） | 动态创建，短时间有效，绑定 Pod 生命周期，减少 Token 泄露风险。 |
+
+```
+[root@master ~]# kubectl get sa
+NAME      SECRETS   AGE
+default   1         161d
+[root@master ~]# kubectl get sa -n kube-system
+NAME                                 SECRETS   AGE
+attachdetach-controller              1         161d
+bootstrap-signer                     1         161d
+calico-kube-controllers              1         161d
+calico-node                          1         161d
+certificate-controller               1         161d
+clusterrole-aggregation-controller   1         161d
+coredns                              1         161d
+cronjob-controller                   1         161d
+daemon-set-controller                1         161d
+default                              1         161d
+deployment-controller                1         161d
+disruption-controller                1         161d
+endpoint-controller                  1         161d
+endpointslice-controller             1         161d
+endpointslicemirroring-controller    1         161d
+ephemeral-volume-controller          1         161d
+expand-controller                    1         161d
+generic-garbage-collector            1         161d
+horizontal-pod-autoscaler            1         161d
+job-controller                       1         161d
+kube-proxy                           1         161d
+metrics-server                       1         25d
+namespace-controller                 1         161d
+nfs-client-provisioner               1         9d
+node-controller                      1         161d
+persistent-volume-binder             1         161d
+pod-garbage-collector                1         161d
+pv-protection-controller             1         161d
+pvc-protection-controller            1         161d
+replicaset-controller                1         161d
+replication-controller               1         161d
+resourcequota-controller             1         161d
+root-ca-cert-publisher               1         161d
+service-account-controller           1         161d
+service-controller                   1         161d
+statefulset-controller               1         161d
+token-cleaner                        1         161d
+ttl-after-finished-controller        1         161d
+ttl-controller                       1         161d
+[root@master ~]# kubectl get ns
+NAME              STATUS   AGE
+default           Active   161d
+ingress-nginx     Active   23d
+kube-node-lease   Active   161d
+kube-public       Active   161d
+kube-system       Active   161d
+[root@master ~]# kubectl get sa -n ingress-nginx
+NAME            SECRETS   AGE
+default         1         23d
+ingress-nginx   1         21d
+[root@master ~]#
+```
+#### 使用场景
+```
+Service Account 在 Pod 中的作用
+
+Kubernetes 默认会为每个 Pod 关联一个 Service Account，并自动提供 API 访问凭证（Token）。应用程序可以使用这个凭证来与 Kubernetes API Server 进行通信，比如：
+
+-- 监控应用（如 Prometheus Operator） 需要从 API Server 获取 Pod、Service、Metrics 信息。
+-- CI/CD 工具（如 ArgoCD） 需要管理集群资源，创建或删除 Pod。
+-- 自定义控制器（Operator） 监听 API Server 事件并进行自动化管理。
+```
+
+```
+Service Account 如何工作
+
+Pod 启动时，Kubernetes 会自动为它分配一个 Service Account（默认是 default，除非指定了其他 Service Account）。
+Pod 内会自动挂载一个 Service Account Token（JWT 格式的凭证），路径通常是：/var/run/secrets/kubernetes.io/serviceaccount/token
+
+Pod 内的应用可以使用这个 Token 访问 API Server，但权限取决于 Service Account 绑定的 RBAC 规则。
+```
+
+
+
+### 授权
+
+| **资源**            | **作用范围**       | **作用** | **适用场景** |
+|-------------------|----------------|--------|------------|
+| **Role**         | 仅限于 **指定命名空间** | 定义该命名空间内的访问权限 | 适用于限制某个命名空间内的权限，例如 `dev` 命名空间的开发者只能查看 Pod |
+| **ClusterRole**  | **整个集群**（跨命名空间） | 定义集群级别的访问权限 | 适用于需要跨多个命名空间或涉及集群资源（如 `nodes`、`namespaces`、`clusterroles`）的权限管理 |
+| **RoleBinding**  | 仅限于 **指定命名空间** | 将 `Role` 绑定到用户、组或 Service Account | 适用于在 `default` 命名空间给某个用户分配 `Role` |
+| **ClusterRoleBinding** | **整个集群**（跨命名空间） | 将 `ClusterRole` 绑定到用户、组或 Service Account | 适用于赋予某个用户跨命名空间的权限，例如 `cluster-admin` 权限 |
+#### 示例：允许 Pod 读取 API Server 的 Pod 信息
+```
+# 创建一个 Service Account
+apiVersion: v1 # 使用 Kubernetes v1 API 版本
+kind: ServiceAccount # 定义资源类型为 ServiceAccount
+metadata:
+  name: pod-reader # 设置 Service Account 名称为 pod-reader
+  namespace: default # 该 Service Account 归属于 default 命名空间
+作用：创建一个名为 pod-reader 的 Service Account，属于 default 命名空间。
+```
+
+```
+# 赋予该 Service Account 读取 Pod 的权限
+
+apiVersion: rbac.authorization.k8s.io/v1 # 使用 RBAC v1 API 版本
+kind: Role  # 定义资源类型为 Role
+metadata:
+  namespace: default # 该 Role 仅适用于 default 命名空间
+  name: pod-read-role # 该 Role 的名称为 pod-read-role
+rules:
+- apiGroups: [""] # 空字符串表示访问核心 API 组
+  resources: ["pods"] # 作用于 Pod 资源
+  verbs: ["get", "list"]  # 允许执行 get 和 list 操作
+---
+apiVersion: rbac.authorization.k8s.io/v1 # 使用 RBAC v1 API 版本
+kind: RoleBinding # 定义资源类型为 RoleBinding
+metadata:
+  namespace: default # 该 RoleBinding 作用于 default 命名空间
+  name: bind-pod-reader # RoleBinding 的名称为 bind-pod-reader
+subjects:
+- kind: ServiceAccount # 绑定的主体类型为 ServiceAccount
+  name: pod-reader  # 绑定的 ServiceAccount 名称
+  namespace: default # 该 ServiceAccount 所在的命名空间
+roleRef:
+  kind: Role # 绑定的角色类型为 Role
+  name: pod-read-role # 绑定的 Role 名称
+  apiGroup: rbac.authorization.k8s.io # 使用 RBAC API 组
+
+# 作用：允许 pod-reader 读取 default 命名空间下的 Pod 信息。注意：仅 get 和 list 权限，不能创建、删除 Pod。
+```
+
+```
+# 让 Pod 使用这个 Service Account
+
+apiVersion: v1 # 使用 Kubernetes v1 API 版本
+kind: Pod # 定义资源类型为 Pod
+metadata:
+  name: api-client # 设置 Pod 的名称为 api-client
+  namespace: default # 该 Pod 归属于 default 命名空间
+spec:
+  serviceAccountName: pod-reader  # 绑定 pod-reader 作为 Service Account
+  containers:
+  - name: curl-container  # 容器名称为 curl-container
+    image: curlimages/curl # 使用 curl 官方镜像
+    command: ["sleep", "3600"] # 运行 sleep 命令，保持容器运行
+# 作用：这个 Pod 使用 pod-reader 作为 Service Account。运行后，它可以使用 Service Account Token 访问 API Server。
+```
+
+```
+# 在 Pod 内访问 API Server
+
+kubectl exec -it api-client -- /bin/sh # 进入 api-client Pod 的 Shell 终端
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) # 读取 Service Account Token
+curl -s --header "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces/default/pods # 使用 Bearer Token 通过 API Server 查询 default 命名空间下的 Pod 列表
+
+```
