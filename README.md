@@ -1,4 +1,5 @@
-![image](https://github.com/user-attachments/assets/2d4addb4-75f3-4d47-af92-b7815b15ff22)# 核心概念
+![image](https://github.com/user-attachments/assets/2d4addb4-75f3-4d47-af92-b7815b15ff22)
+# 核心概念
 ## 认识k8s
 ### 什么是k8s
 #### k8s是一个开源的，用于管理云平台中多个主机上的容器化的应用，k8s目标是为了让部署容器化的应用简单高效，k8s提供了应用部署、规划、更新和维护的一种机制。
