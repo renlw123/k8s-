@@ -3691,7 +3691,6 @@ root@node1 index]# ll
 
 ![image](https://github.com/user-attachments/assets/fa2fb675-ef15-49e3-95ec-38da278a5cb6)
 
-![image](https://github.com/user-attachments/assets/2d4addb4-75f3-4d47-af92-b7815b15ff22)
 
 
 ##### 生命周期
