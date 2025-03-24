@@ -1,4 +1,3 @@
-![image](https://github.com/user-attachments/assets/2d4addb4-75f3-4d47-af92-b7815b15ff22)
 # 核心概念
 ## 认识k8s
 ### 什么是k8s
@@ -3691,6 +3690,8 @@ root@node1 index]# ll
 | **Pod**     | 通过 PVC 请求存储，Pod 访问存储资源（即 PV），实现持久化存储。       |
 
 ![image](https://github.com/user-attachments/assets/fa2fb675-ef15-49e3-95ec-38da278a5cb6)
+
+![image](https://github.com/user-attachments/assets/2d4addb4-75f3-4d47-af92-b7815b15ff22)
 
 
 ##### 生命周期
